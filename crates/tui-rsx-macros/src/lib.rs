@@ -80,13 +80,24 @@ impl View {
             ViewType::Column(children) => {
                 self.get_layout_tokens(quote! {Direction::Vertical}, children, i)
             }
-            ViewType::Element { name, props } => {
-                if let Some(props) = props {
+            ViewType::Element { name, props } => match (props, i) {
+                (Some(props), Some(i)) => {
                     quote! { #name(f, chunks[#i], #props); }
-                } else {
+                }
+                (Some(props), None) => {
+                    quote! {
+                        |f: &mut Frame<_>, rect: Rect| {
+                            #name(f, rect, #props);
+                        }
+                    }
+                }
+                (None, Some(i)) => {
                     quote! { #name(f, chunks[#i]); }
                 }
-            }
+                (None, None) => {
+                    quote! { #name }
+                }
+            },
         }
     }
 }
