@@ -6,5 +6,9 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ratatui = {version = "0.20.1", default-features = false}
+ratatui = {git = "https://github.com/tui-rs-revival/ratatui", rev = "33b3f4e3122cc59eaa789c684dd17dae3a716be1", default-features = false}
 tui-rsx-macros = {path = "../tui-rsx-macros"}
+
+[dev-dependencies]
+crossterm = "0.26.1"
+ratatui = {git = "https://github.com/tui-rs-revival/ratatui", rev = "33b3f4e3122cc59eaa789c684dd17dae3a716be1"}
