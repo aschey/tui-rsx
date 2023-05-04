@@ -115,7 +115,24 @@ struct NodeAttributes {
 }
 
 impl NodeAttributes {
-    fn from_nodes(tag_name: Option<&str>, nodes: &[Node]) -> Self {
+    fn from_custom(element: &NodeElement, children: proc_macro2::TokenStream) -> Self {
+        Self::from_nodes(
+            Some(element.name.to_string().as_str()),
+            &element.attributes,
+            if children.is_empty() {
+                None
+            } else {
+                Some(children)
+            },
+            "",
+        )
+    }
+    fn from_nodes(
+        tag_name: Option<&str>,
+        nodes: &[Node],
+        args: Option<proc_macro2::TokenStream>,
+        object_suffix: &str,
+    ) -> Self {
         let mut attrs = Self {
             constraint: Constraint::Min,
             expr: Expr::Lit(ExprLit {
@@ -125,8 +142,10 @@ impl NodeAttributes {
             props: None,
         };
 
+        let mut attribute_parsed = false;
         for node in nodes {
             if let Node::Attribute(attribute) = node {
+                attribute_parsed = true;
                 match attribute.key.to_string().as_str() {
                     "min" => {
                         attrs.constraint = Constraint::Min;
@@ -145,8 +164,8 @@ impl NodeAttributes {
                         attrs.expr = attribute.value.as_deref().unwrap().clone();
                     }
                     name => {
+                        let func_name = Ident::new(name, Span::call_site());
                         if let Some(tag_name) = tag_name {
-                            let func_name = Ident::new(name, Span::call_site());
                             if let Some(val) = &attribute.value {
                                 let val = val.deref();
                                 if let Some(props) = attrs.props {
@@ -154,22 +173,40 @@ impl NodeAttributes {
                                         #props.#func_name(#val)
                                     });
                                 } else {
-                                    let object =
-                                        tag_name[0..1].to_uppercase() + &tag_name[1..] + "Props";
-                                    let ident = Ident::new(&object, Span::call_site());
-                                    attrs.props = Some(quote! {
-                                        #ident::default().#func_name(#val)
-                                    });
+                                    let props = build_struct(tag_name, &args, object_suffix);
+                                    attrs.props = Some(quote! { #props.#func_name(#val) });
                                 }
+                            } else if name == "default" {
+                                attrs.props = Some(build_struct(tag_name, &args, object_suffix));
                             }
                         }
                     }
                 }
-            } else {
             }
         }
 
+        if let (false, Some(tag_name), Some(args)) = (attribute_parsed, tag_name, args) {
+            attrs.props = Some(build_struct(tag_name, &Some(args), object_suffix));
+        }
         attrs
+    }
+}
+
+fn build_struct(
+    tag_name: &str,
+    args: &Option<proc_macro2::TokenStream>,
+    object_suffix: &str,
+) -> proc_macro2::TokenStream {
+    let object = tag_name[0..1].to_uppercase() + &tag_name[1..] + object_suffix;
+    let ident = Ident::new(&object, Span::call_site());
+    if let Some(args) = args.as_ref() {
+        quote! {
+            #ident::new(#args)
+        }
+    } else {
+        quote! {
+            #ident::default()
+        }
     }
 }
 
@@ -208,26 +245,63 @@ fn parse_elements(nodes: &[Node]) -> Vec<View> {
         if let Node::Element(element) = node {
             views.push(parse_element(element));
         } else {
-            abort_call_site!("RSX root node shoule be a named element");
+            abort_call_site!("RSX node shoule be a named element");
         }
     }
     views
 }
 
+fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
+    let mut tokens = vec![];
+    for node in nodes {
+        match node {
+            Node::Element(element) => {
+                let children = parse_named_element_children(&element.children);
+                let attrs = NodeAttributes::from_custom(element, children);
+
+                if let Some(props) = attrs.props {
+                    tokens.push(quote! { #props });
+                }
+            }
+            Node::Text(text) => {
+                tokens.push(text.value.to_token_stream());
+            }
+            Node::Comment(_) => {}
+            Node::Doctype(_) => {
+                abort_call_site!("Doctype invalid at this location");
+            }
+            Node::Block(block) => {}
+            Node::Attribute(_) => {
+                abort_call_site!("Attribute invalid at this location");
+            }
+            Node::Fragment(frag) => {
+                abort_call_site!("Attribute invalid at this location");
+            }
+        }
+    }
+    if tokens.is_empty() {
+        proc_macro2::TokenStream::default()
+    } else if tokens.len() == 1 {
+        tokens[0].clone()
+    } else {
+        quote! { vec![#(#tokens),*] }
+    }
+}
+
 fn parse_element(element: &NodeElement) -> View {
     match element.name.to_string().as_str() {
-        "Row" => {
+        "Row" | "row" => {
             let children = parse_elements(&element.children);
-            let attrs = NodeAttributes::from_nodes(None, &element.attributes);
+            let attrs = NodeAttributes::from_nodes(None, &element.attributes, None, "Props");
             View {
                 view_type: ViewType::Row(children),
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
             }
         }
-        "Column" => {
+        "Column" | "column" => {
             let children = parse_elements(&element.children);
-            let attrs = NodeAttributes::from_nodes(None, &element.attributes);
+            let attrs = NodeAttributes::from_nodes(None, &element.attributes, None, "Props");
             View {
                 view_type: ViewType::Column(children),
                 constraint: attrs.constraint,
@@ -235,7 +309,9 @@ fn parse_element(element: &NodeElement) -> View {
             }
         }
         name => {
-            let attrs = NodeAttributes::from_nodes(Some(name), &element.attributes);
+            let children = parse_named_element_children(&element.children);
+            let attrs = NodeAttributes::from_custom(element, children);
+
             View {
                 view_type: ViewType::Element {
                     name: Ident::new(name, Span::call_site()),

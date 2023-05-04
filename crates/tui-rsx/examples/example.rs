@@ -24,13 +24,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .draw(|f| {
             let view = rsx! {
                 <Column>
-                    <paragraph
-                        length=2
-                        text="yo"
-                        style=Style::default().fg(Color::Green)
-                        block = Block::default().title("title2")
-                    />
-                    <block title="title"/>
+                    <list>
+                        <listItem style=Style::default().fg(Color::Black)>"test1"</listItem>
+                        <listItem>"test2"</listItem>
+                    </list>
                 </Column>
             };
             view(f, f.size());
