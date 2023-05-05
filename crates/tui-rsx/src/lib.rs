@@ -1,9 +1,9 @@
 use prelude::*;
-use ratatui::{backend::Backend, layout::Rect, Frame};
+use ratatui::{backend::Backend, layout::Rect, style::Style, Frame};
 
 pub mod prelude {
     pub use super::*;
-    pub use ratatui::{layout::*, text::*, widgets::*, Frame};
+    pub use ratatui::{layout::*, style::*, text::*, widgets::*, Frame};
     pub use tui_rsx_macros::*;
 }
 
@@ -40,17 +40,39 @@ pub fn tabs<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: TabsProps) {
     frame.render_widget(props, rect);
 }
 
-pub trait NewSpans<'a> {
+pub trait SpansExt<'a> {
     fn new<T>(source: T) -> Self
     where
         Spans<'a>: From<T>;
 }
 
-impl<'a> NewSpans<'a> for Spans<'a> {
+impl<'a> SpansExt<'a> for Spans<'a> {
     fn new<T>(source: T) -> Self
     where
         Spans<'a>: From<T>,
     {
         Self::from(source)
+    }
+}
+
+pub trait SpanExt<'a> {
+    fn new<T>(source: T) -> Self
+    where
+        Span<'a>: From<T>;
+
+    fn style(self, style: Style) -> Self;
+}
+
+impl<'a> SpanExt<'a> for Span<'a> {
+    fn new<T>(source: T) -> Self
+    where
+        Span<'a>: From<T>,
+    {
+        Self::from(source)
+    }
+
+    fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
     }
 }

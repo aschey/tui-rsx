@@ -27,7 +27,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     <Column percentage=50>
                         <tabs select=0>
                             <spans>"test"</spans>
-                            <spans>{vec![Span::from("test3")]}</spans>
+                            <spans>
+                                <span style=Style::default().fg(Color::Black)>"test3"</span>
+                                {Span::from("test4")}
+                            </spans>
                         </tabs>
                     </Column>
                     <Column percentage=50>
