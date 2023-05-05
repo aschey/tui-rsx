@@ -23,13 +23,22 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     terminal
         .draw(|f| {
             let view = rsx! {
-                <Column>
-                    <list>
-                        <listItem style=Style::default().fg(Color::Black)>"test1"</listItem>
-                        <listItem>"test2"</listItem>
-                    </list>
-                </Column>
+                move <Row>
+                    <Column percentage=50>
+                        <tabs select=0>
+                            <spans>"test"</spans>
+                            <spans>{vec![Span::from("test3")]}</spans>
+                        </tabs>
+                    </Column>
+                    <Column percentage=50>
+                        <list>
+                            <listItem>"test3"</listItem>
+                            <listItem>"test4"</listItem>
+                        </list>
+                    </Column>
+                </Row>
             };
+
             view(f, f.size());
         })
         .unwrap();

@@ -100,7 +100,7 @@ fn test_list_basic() {
 }
 
 #[test]
-fn test_list_styled() {
+fn list_styled() {
     let backend = TestBackend::new(15, 3);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
@@ -129,4 +129,50 @@ fn test_list_styled() {
     }
 
     terminal.backend().assert_buffer(&expected);
+}
+
+#[test]
+fn block_children() {
+    let backend = TestBackend::new(15, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            let view = rsx! {
+                <Column>
+                    <tabs>
+                        {"tab1".into()}
+                        {"tab2".into()}
+                    </tabs>
+                </Column>
+            };
+
+            view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+}
+
+#[test]
+fn complex_block_children() {
+    let backend = TestBackend::new(15, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            let view = rsx! {
+                <Column>
+                <tabs select=0>
+                    <spans>"tab1"</spans>
+                    <spans>{vec![Span::from("tab2")]}</spans>
+                </tabs>
+                </Column>
+            };
+
+            view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
 }

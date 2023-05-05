@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Span};
+use proc_macro2::{Ident, Span, TokenTree};
 use proc_macro_error::{abort_call_site, proc_macro_error};
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{Expr, ExprLit, Lit, LitInt};
@@ -213,10 +213,23 @@ fn build_struct(
 #[proc_macro]
 #[proc_macro_error]
 pub fn rsx(tokens: TokenStream) -> TokenStream {
-    match syn_rsx::parse(tokens) {
+    let tokens: proc_macro2::TokenStream = tokens.into();
+    let mut tokens = tokens.into_iter().peekable();
+    let mut set_move = false;
+    if let Some(TokenTree::Ident(ident)) = tokens.peek() {
+        if *ident == "move" {
+            set_move = true;
+            tokens.next();
+        }
+    }
+    match syn_rsx::parse2(tokens.collect()) {
         Ok(nodes) => {
             let view = parse_root_nodes(nodes);
-            quote! { #view }
+            if set_move {
+                quote! { move #view }
+            } else {
+                quote! { #view }
+            }
         }
         Err(e) => e.to_compile_error(),
     }
@@ -266,17 +279,29 @@ fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
             Node::Text(text) => {
                 tokens.push(text.value.to_token_stream());
             }
-            Node::Comment(_) => {}
+            Node::Block(block) => {
+                if let Expr::Block(block) = block.value.as_ref() {
+                    // Get content without braces
+                    let content: proc_macro2::TokenStream = block
+                        .block
+                        .stmts
+                        .iter()
+                        .map(|s| s.to_token_stream())
+                        .collect();
+
+                    tokens.push(quote! { #content });
+                }
+            }
             Node::Doctype(_) => {
                 abort_call_site!("Doctype invalid at this location");
             }
-            Node::Block(block) => {}
             Node::Attribute(_) => {
                 abort_call_site!("Attribute invalid at this location");
             }
-            Node::Fragment(frag) => {
-                abort_call_site!("Attribute invalid at this location");
+            Node::Fragment(_) => {
+                abort_call_site!("Fragment invalid at this location");
             }
+            _ => {}
         }
     }
     if tokens.is_empty() {
