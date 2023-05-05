@@ -212,7 +212,17 @@ fn build_struct(
 
 #[proc_macro]
 #[proc_macro_error]
-pub fn rsx(tokens: TokenStream) -> TokenStream {
+pub fn prop(tokens: TokenStream) -> TokenStream {
+    match syn_rsx::parse(tokens) {
+        Ok(nodes) => parse_named_element_children(&nodes),
+        Err(e) => e.to_compile_error(),
+    }
+    .into()
+}
+
+#[proc_macro]
+#[proc_macro_error]
+pub fn view(tokens: TokenStream) -> TokenStream {
     let tokens: proc_macro2::TokenStream = tokens.into();
     let mut tokens = tokens.into_iter().peekable();
     let mut set_move = false;

@@ -4,8 +4,7 @@ use ratatui::{
     style::{Color, Style},
     Terminal,
 };
-use tui_rsx::prelude::*;
-use tui_rsx_macros::rsx;
+use tui_rsx::{prelude::*, view};
 
 #[test]
 fn standalone_widget() {
@@ -14,7 +13,7 @@ fn standalone_widget() {
 
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <block title="test" borders=Borders::ALL/>
             };
             view(f, f.size());
@@ -35,7 +34,7 @@ fn widget_no_props() {
 
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <Column>
                     <block default/>
                 </Column>
@@ -58,7 +57,7 @@ fn simple_column() {
 
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <Column>
                     <block title="test" borders=Borders::ALL/>
                 </Column>
@@ -80,7 +79,7 @@ fn test_list_basic() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <Column>
                     <list>
                         <listItem>"test1"</listItem>
@@ -105,7 +104,7 @@ fn list_styled() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <Column>
                     <list>
                         <listItem style=Style::default().fg(Color::Black)>"test1"</listItem>
@@ -137,7 +136,7 @@ fn block_children() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <Column>
                     <tabs>
                         {"tab1".into()}
@@ -160,12 +159,12 @@ fn complex_block_children() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 <Column>
-                <tabs select=0>
-                    <spans>"tab1"</spans>
-                    <spans>{vec![Span::from("tab2")]}</spans>
-                </tabs>
+                    <tabs select=0>
+                        <spans>"tab1"</spans>
+                        <spans>{vec![Span::from("tab2")]}</spans>
+                    </tabs>
                 </Column>
             };
 
@@ -175,4 +174,28 @@ fn complex_block_children() {
     terminal
         .backend()
         .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+}
+
+#[test]
+fn macro_as_prop() {
+    let backend = TestBackend::new(10, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            let view = view! {
+                <Column>
+                    <paragraph block=prop!{<block borders=Borders::ALL/>}>
+                        "test"
+                    </paragraph>
+                </Column>
+            };
+
+            view(f, f.size());
+        })
+        .unwrap();
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "┌────────┐",
+        "│test    │",
+        "└────────┘",
+    ]));
 }

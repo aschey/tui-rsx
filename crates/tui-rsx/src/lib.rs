@@ -1,6 +1,6 @@
 use prelude::*;
 use ratatui::{backend::Backend, layout::Rect, style::Style, Frame};
-
+pub use tui_rsx_macros::*;
 pub mod prelude {
     pub use super::*;
     pub use ratatui::{layout::*, style::*, text::*, widgets::*, Frame};
@@ -23,15 +23,6 @@ pub type ListProps<'a> = List<'a>;
 
 pub fn list<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: ListProps) {
     frame.render_widget(props, rect);
-}
-
-pub fn stateful_list<B: Backend>(
-    frame: &mut Frame<B>,
-    rect: Rect,
-    props: ListProps,
-    state: &mut ListState,
-) {
-    frame.render_stateful_widget(props, rect, state);
 }
 
 pub type TabsProps<'a> = Tabs<'a>;

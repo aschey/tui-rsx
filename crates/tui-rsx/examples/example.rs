@@ -22,13 +22,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
     terminal
         .draw(|f| {
-            let view = rsx! {
+            let view = view! {
                 move <Row>
                     <Column percentage=50>
-                        <tabs select=0>
+                        <tabs select=0 block=prop!{ <block borders=Borders::ALL/> }>
                             <spans>"test"</spans>
                             <spans>
-                                <span style=Style::default().fg(Color::Black)>"test3"</span>
+                                <span style=prop!{ <style fg=Color::Green/> }>"test3"</span>
                                 {Span::from("test4")}
                             </spans>
                         </tabs>
