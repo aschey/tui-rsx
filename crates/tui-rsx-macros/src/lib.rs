@@ -214,7 +214,7 @@ fn build_struct(
 #[proc_macro_error]
 pub fn prop(tokens: TokenStream) -> TokenStream {
     match syn_rsx::parse(tokens) {
-        Ok(nodes) => parse_named_element_children(&nodes, false),
+        Ok(nodes) => parse_named_element_children(&nodes),
         Err(e) => e.to_compile_error(),
     }
     .into()
@@ -274,12 +274,13 @@ fn parse_elements(nodes: &[Node]) -> Vec<View> {
     views
 }
 
-fn parse_named_element_children(nodes: &[Node], force_vec: bool) -> proc_macro2::TokenStream {
+fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
     let mut tokens = vec![];
+    let mut force_vec = false;
     for node in nodes {
         match node {
             Node::Element(element) => {
-                let children = parse_named_element_children(&element.children, force_vec);
+                let children = parse_named_element_children(&element.children);
                 let attrs = NodeAttributes::from_custom(element, children);
 
                 if let Some(props) = attrs.props {
@@ -309,14 +310,16 @@ fn parse_named_element_children(nodes: &[Node], force_vec: bool) -> proc_macro2:
                 abort_call_site!("Attribute invalid at this location");
             }
             Node::Fragment(fragment) => {
-                return parse_named_element_children(&fragment.children, true);
+                let children = parse_named_element_children(&fragment.children);
+                tokens.push(children);
+                force_vec = true;
             }
             _ => {}
         }
     }
     if tokens.is_empty() {
         proc_macro2::TokenStream::default()
-    } else if !force_vec && tokens.len() == 1 {
+    } else if tokens.len() == 1 && !force_vec {
         tokens[0].clone()
     } else {
         quote! { vec![#(#tokens),*] }
@@ -344,7 +347,7 @@ fn parse_element(element: &NodeElement) -> View {
             }
         }
         name => {
-            let children = parse_named_element_children(&element.children, false);
+            let children = parse_named_element_children(&element.children);
             let attrs = NodeAttributes::from_custom(element, children);
 
             View {
