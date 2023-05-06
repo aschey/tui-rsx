@@ -154,6 +154,28 @@ fn block_children() {
 }
 
 #[test]
+fn single_child_as_vec() {
+    let backend = TestBackend::new(15, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            let view = view! {
+                <Column>
+                    <tabs>
+                        <>{"tab1".into()}</>
+                    </tabs>
+                </Column>
+            };
+
+            view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec![" tab1          "]));
+}
+
+#[test]
 fn complex_block_children() {
     let backend = TestBackend::new(15, 1);
     let mut terminal = Terminal::new(backend).unwrap();

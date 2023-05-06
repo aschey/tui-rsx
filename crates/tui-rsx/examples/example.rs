@@ -23,7 +23,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     terminal
         .draw(|f| {
             let view = view! {
-                move <Row>
+            move <Row>
                     <Column percentage=50>
                         <tabs select=0 block=prop!{ <block borders=Borders::ALL/> }>
                             <spans>"test"</spans>
