@@ -59,54 +59,41 @@ pub fn stateful_table<B: Backend>(
     frame.render_stateful_widget(props, rect, state);
 }
 
-pub trait SpansExt<'a> {
+pub trait NewExt<'a>
+where
+    Self: 'a,
+{
     fn new<T>(source: T) -> Self
     where
-        Spans<'a>: From<T>;
+        Self: From<T>;
 }
 
-impl<'a> SpansExt<'a> for Spans<'a> {
+pub trait NewFrom {}
+
+impl<'a, S> NewExt<'a> for S
+where
+    S: NewFrom + 'a,
+{
     fn new<T>(source: T) -> Self
     where
-        Spans<'a>: From<T>,
+        Self: From<T>,
     {
         Self::from(source)
     }
 }
 
-pub trait SpanExt<'a> {
-    fn new<T>(source: T) -> Self
-    where
-        Span<'a>: From<T>;
+impl<'a> NewFrom for Spans<'a> {}
+impl<'a> NewFrom for Span<'a> {}
+impl<'a> NewFrom for Cell<'a> {}
+impl<'a> NewFrom for Text<'a> {}
 
+pub trait SpanExt<'a> {
     fn style(self, style: Style) -> Self;
 }
 
 impl<'a> SpanExt<'a> for Span<'a> {
-    fn new<T>(source: T) -> Self
-    where
-        Span<'a>: From<T>,
-    {
-        Self::from(source)
-    }
-
     fn style(mut self, style: Style) -> Self {
         self.style = style;
         self
-    }
-}
-
-pub trait CellExt<'a> {
-    fn new<T>(source: T) -> Self
-    where
-        Cell<'a>: From<T>;
-}
-
-impl<'a> CellExt<'a> for Cell<'a> {
-    fn new<T>(source: T) -> Self
-    where
-        Cell<'a>: From<T>,
-    {
-        Self::from(source)
     }
 }
