@@ -74,7 +74,7 @@ fn simple_column() {
 }
 
 #[test]
-fn test_list_basic() {
+fn list_basic() {
     let backend = TestBackend::new(10, 3);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
@@ -87,6 +87,31 @@ fn test_list_basic() {
                     </list>
                 </Column>
             };
+            view(f, f.size());
+        })
+        .unwrap();
+
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "test1     ",
+        "test2     ",
+        "          ",
+    ]));
+}
+
+#[test]
+fn stateful() {
+    let backend = TestBackend::new(10, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut state = ListState::default();
+    terminal
+        .draw(|f| {
+            let mut view = view! {
+                <stateful_list state=&mut state>
+                    <listItem>"test1"</listItem>
+                    <listItem>"test2"</listItem>
+                </stateful_list>
+            };
+
             view(f, f.size());
         })
         .unwrap();

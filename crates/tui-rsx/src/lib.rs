@@ -25,10 +25,38 @@ pub fn list<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: ListProps) {
     frame.render_widget(props, rect);
 }
 
+pub type StatefulListProps<'a> = List<'a>;
+
+pub fn stateful_list<B: Backend>(
+    frame: &mut Frame<B>,
+    rect: Rect,
+    props: StatefulListProps,
+    state: &mut ListState,
+) {
+    frame.render_stateful_widget(props, rect, state);
+}
+
 pub type TabsProps<'a> = Tabs<'a>;
 
 pub fn tabs<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: TabsProps) {
     frame.render_widget(props, rect);
+}
+
+pub type TableProps<'a> = Table<'a>;
+
+pub fn table<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: TableProps) {
+    frame.render_widget(props, rect);
+}
+
+pub type StatefulTableProps<'a> = Table<'a>;
+
+pub fn stateful_table<B: Backend>(
+    frame: &mut Frame<B>,
+    rect: Rect,
+    props: TableProps,
+    state: &mut TableState,
+) {
+    frame.render_stateful_widget(props, rect, state);
 }
 
 pub trait SpansExt<'a> {
@@ -65,5 +93,20 @@ impl<'a> SpanExt<'a> for Span<'a> {
     fn style(mut self, style: Style) -> Self {
         self.style = style;
         self
+    }
+}
+
+pub trait CellExt<'a> {
+    fn new<T>(source: T) -> Self
+    where
+        Cell<'a>: From<T>;
+}
+
+impl<'a> CellExt<'a> for Cell<'a> {
+    fn new<T>(source: T) -> Self
+    where
+        Cell<'a>: From<T>,
+    {
+        Self::from(source)
     }
 }
