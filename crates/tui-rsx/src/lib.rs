@@ -97,3 +97,14 @@ impl<'a> SpanExt<'a> for Span<'a> {
         self
     }
 }
+
+pub trait TextExt<'a> {
+    fn style(self, style: Style) -> Self;
+}
+
+impl<'a> TextExt<'a> for Text<'a> {
+    fn style(mut self, style: Style) -> Self {
+        self.patch_style(style);
+        self
+    }
+}
