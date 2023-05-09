@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenTree};
 use proc_macro_error::{abort_call_site, proc_macro_error};
 use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{Expr, ExprLit, Lit, LitInt};
+use syn::{Expr, ExprBlock, ExprLit, Lit, LitInt};
 use syn_rsx::{Node, NodeElement};
 
 #[derive(Clone)]
@@ -24,6 +24,7 @@ enum ViewType {
         props: Option<proc_macro2::TokenStream>,
         state: Option<proc_macro2::TokenStream>,
     },
+    Block(proc_macro2::TokenStream),
 }
 
 #[derive(Clone)]
@@ -80,6 +81,13 @@ impl View {
             }
             ViewType::Column(children) => {
                 self.get_layout_tokens(quote! {Direction::Vertical}, children, i)
+            }
+            ViewType::Block(tokens) => {
+                if let Some(i) = i {
+                    quote! { (#tokens)(f, chunks[#i]) }
+                } else {
+                    tokens.to_owned()
+                }
             }
             ViewType::Element { name, props, state } => match (props, state, i) {
                 (Some(props), Some(state), Some(i)) => {
@@ -151,10 +159,7 @@ impl NodeAttributes {
     ) -> Self {
         let mut attrs = Self {
             constraint: Constraint::Min,
-            expr: Expr::Lit(ExprLit {
-                lit: Lit::Int(LitInt::new("0", Span::call_site())),
-                attrs: vec![],
-            }),
+            expr: get_default_constraint(),
             props: None,
             state: None,
         };
@@ -292,10 +297,23 @@ fn parse_root_node(node: &Node) -> View {
 fn parse_elements(nodes: &[Node]) -> Vec<View> {
     let mut views = vec![];
     for node in nodes {
-        if let Node::Element(element) = node {
-            views.push(parse_element(element));
-        } else {
-            abort_call_site!("RSX node shoule be a named element");
+        match node {
+            Node::Element(element) => {
+                views.push(parse_element(element));
+            }
+            Node::Block(block) => {
+                if let Expr::Block(block) = block.value.as_ref() {
+                    let content = get_block_contents(block);
+                    views.push(View {
+                        view_type: ViewType::Block(content),
+                        constraint: Constraint::Min,
+                        constraint_val: get_default_constraint(),
+                    })
+                }
+            }
+            node => {
+                abort_call_site!(format!("Invalid RSX node: {node}"));
+            }
         }
     }
     views
@@ -395,4 +413,20 @@ fn capitalize(s: &str) -> String {
 
 fn snake_case_to_pascal_case(s: &str) -> String {
     s.split('_').map(capitalize).collect::<Vec<_>>().join("")
+}
+
+fn get_block_contents(block: &ExprBlock) -> proc_macro2::TokenStream {
+    block
+        .block
+        .stmts
+        .iter()
+        .map(|s| s.to_token_stream())
+        .collect()
+}
+
+fn get_default_constraint() -> Expr {
+    Expr::Lit(ExprLit {
+        lit: Lit::Int(LitInt::new("0", Span::call_site())),
+        attrs: vec![],
+    })
 }

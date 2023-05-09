@@ -74,6 +74,34 @@ fn simple_column() {
 }
 
 #[test]
+fn conditional() {
+    let backend = TestBackend::new(10, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let a = 1;
+    terminal
+        .draw(|f| {
+            let view = view! {
+                <Column>
+                    {
+                        match a {
+                            1 =>  view!(<block title="test" borders=Borders::ALL/>),
+                            _ => view!(<block title="test2" borders=Borders::ALL/>)
+                        }
+                    }
+                </Column>
+            };
+            view(f, f.size());
+        })
+        .unwrap();
+
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "┌test────┐",
+        "│        │",
+        "└────────┘",
+    ]));
+}
+
+#[test]
 fn list_basic() {
     let backend = TestBackend::new(10, 3);
     let mut terminal = Terminal::new(backend).unwrap();
