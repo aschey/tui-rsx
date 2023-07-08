@@ -4,8 +4,8 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenTree};
 use proc_macro_error::{abort_call_site, proc_macro_error};
 use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{Expr, ExprBlock, ExprLit, Lit, LitInt};
-use syn_rsx::{Node, NodeElement};
+use rstml::node::{Node, NodeAttribute, NodeElement};
+use syn::{Block, Expr, ExprLit, Lit, LitInt};
 
 #[derive(Clone)]
 enum Constraint {
@@ -141,8 +141,8 @@ impl NodeAttributes {
         object_suffix: &str,
     ) -> Self {
         Self::from_nodes(
-            Some(&snake_case_to_pascal_case(&element.name.to_string())),
-            &element.attributes,
+            Some(&snake_case_to_pascal_case(&element.name().to_string())),
+            element.attributes(),
             if children.is_empty() {
                 None
             } else {
@@ -153,7 +153,7 @@ impl NodeAttributes {
     }
     fn from_nodes(
         tag_name: Option<&str>,
-        nodes: &[Node],
+        nodes: &[NodeAttribute],
         args: Option<proc_macro2::TokenStream>,
         object_suffix: &str,
     ) -> Self {
@@ -166,26 +166,26 @@ impl NodeAttributes {
 
         let mut attribute_parsed = false;
         for node in nodes {
-            if let Node::Attribute(attribute) = node {
+            if let NodeAttribute::Attribute(attribute) = node {
                 match attribute.key.to_string().as_str() {
                     "min" => {
                         attrs.constraint = Constraint::Min;
-                        attrs.expr = attribute.value.as_deref().unwrap().clone();
+                        attrs.expr = attribute.value().unwrap().clone();
                     }
                     "max" => {
                         attrs.constraint = Constraint::Max;
-                        attrs.expr = attribute.value.as_deref().unwrap().clone();
+                        attrs.expr = attribute.value().unwrap().clone();
                     }
                     "percentage" => {
                         attrs.constraint = Constraint::Percentage;
-                        attrs.expr = attribute.value.as_deref().unwrap().clone();
+                        attrs.expr = attribute.value().unwrap().clone();
                     }
                     "length" => {
                         attrs.constraint = Constraint::Length;
-                        attrs.expr = attribute.value.as_deref().unwrap().clone();
+                        attrs.expr = attribute.value().unwrap().clone();
                     }
                     "state" => {
-                        if let Some(val) = &attribute.value {
+                        if let Some(val) = &attribute.value() {
                             let val = val.deref();
                             attrs.state = Some(val.to_token_stream());
                         }
@@ -194,7 +194,7 @@ impl NodeAttributes {
                         attribute_parsed = true;
                         let func_name = Ident::new(name, Span::call_site());
                         if let Some(tag_name) = tag_name {
-                            if let Some(val) = &attribute.value {
+                            if let Some(val) = &attribute.value() {
                                 let val = val.deref();
                                 if let Some(props) = attrs.props {
                                     attrs.props = Some(quote! {
@@ -245,7 +245,7 @@ fn build_struct(
 #[proc_macro]
 #[proc_macro_error]
 pub fn prop(tokens: TokenStream) -> TokenStream {
-    match syn_rsx::parse(tokens) {
+    match rstml::parse(tokens) {
         Ok(nodes) => parse_named_element_children(&nodes),
         Err(e) => e.to_compile_error(),
     }
@@ -264,7 +264,7 @@ pub fn view(tokens: TokenStream) -> TokenStream {
             tokens.next();
         }
     }
-    match syn_rsx::parse2(tokens.collect()) {
+    match rstml::parse2(tokens.collect()) {
         Ok(nodes) => {
             let view = parse_root_nodes(nodes);
             if set_move {
@@ -302,7 +302,7 @@ fn parse_elements(nodes: &[Node]) -> Vec<View> {
                 views.push(parse_element(element));
             }
             Node::Block(block) => {
-                if let Expr::Block(block) = block.value.as_ref() {
+                if let Some(block) = block.try_block() {
                     let content = get_block_contents(block);
                     views.push(View {
                         view_type: ViewType::Block(content),
@@ -312,7 +312,7 @@ fn parse_elements(nodes: &[Node]) -> Vec<View> {
                 }
             }
             node => {
-                abort_call_site!(format!("Invalid RSX node: {node}"));
+                abort_call_site!(format!("Invalid RSX node: {node:?}"));
             }
         }
     }
@@ -336,14 +336,10 @@ fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
                 tokens.push(text.value.to_token_stream());
             }
             Node::Block(block) => {
-                if let Expr::Block(block) = block.value.as_ref() {
+                if let Some(block) = block.try_block() {
                     // Get content without braces
-                    let content: proc_macro2::TokenStream = block
-                        .block
-                        .stmts
-                        .iter()
-                        .map(|s| s.to_token_stream())
-                        .collect();
+                    let content: proc_macro2::TokenStream =
+                        block.stmts.iter().map(|s| s.to_token_stream()).collect();
 
                     tokens.push(quote! { #content });
                 }
@@ -351,9 +347,9 @@ fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
             Node::Doctype(_) => {
                 abort_call_site!("Doctype invalid at this location");
             }
-            Node::Attribute(_) => {
-                abort_call_site!("Attribute invalid at this location");
-            }
+            // Node::Attribute(_) => {
+            //     abort_call_site!("Attribute invalid at this location");
+            // }
             Node::Fragment(fragment) => {
                 let children = parse_named_element_children(&fragment.children);
                 tokens.push(children);
@@ -372,10 +368,10 @@ fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
 }
 
 fn parse_element(element: &NodeElement) -> View {
-    match element.name.to_string().as_str() {
+    match element.name().to_string().as_str() {
         "Row" | "row" => {
             let children = parse_elements(&element.children);
-            let attrs = NodeAttributes::from_nodes(None, &element.attributes, None, "Props");
+            let attrs = NodeAttributes::from_nodes(None, element.attributes(), None, "Props");
             View {
                 view_type: ViewType::Row(children),
                 constraint: attrs.constraint,
@@ -384,7 +380,7 @@ fn parse_element(element: &NodeElement) -> View {
         }
         "Column" | "column" => {
             let children = parse_elements(&element.children);
-            let attrs = NodeAttributes::from_nodes(None, &element.attributes, None, "Props");
+            let attrs = NodeAttributes::from_nodes(None, element.attributes(), None, "Props");
             View {
                 view_type: ViewType::Column(children),
                 constraint: attrs.constraint,
@@ -415,13 +411,8 @@ fn snake_case_to_pascal_case(s: &str) -> String {
     s.split('_').map(capitalize).collect::<Vec<_>>().join("")
 }
 
-fn get_block_contents(block: &ExprBlock) -> proc_macro2::TokenStream {
-    block
-        .block
-        .stmts
-        .iter()
-        .map(|s| s.to_token_stream())
-        .collect()
+fn get_block_contents(block: &Block) -> proc_macro2::TokenStream {
+    block.stmts.iter().map(|s| s.to_token_stream()).collect()
 }
 
 fn get_default_constraint() -> Expr {
