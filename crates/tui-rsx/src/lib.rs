@@ -1,3 +1,4 @@
+use leptos_reactive::Scope;
 use prelude::*;
 use ratatui::{backend::Backend, layout::Rect, style::Style, Frame};
 pub use tui_rsx_macros::*;
@@ -7,82 +8,105 @@ pub mod prelude {
     pub use tui_rsx_macros::*;
 }
 
-pub type BlockProps<'a> = Block<'a>;
+macro_rules! impl_widget {
+    ($name:ident, $widget:ident, $props:ident) => {
+        pub type $props<'a> = $widget<'a>;
 
-pub fn block<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: BlockProps) {
-    frame.render_widget(props, rect);
+        impl<'a> MakeBuilder for $props<'a> {}
+
+        pub fn $name<B: Backend>(
+            #[cfg(feature = "reactive")] _cx: Scope,
+            props: $props,
+        ) -> impl Fn(&mut Frame<B>, Rect) + '_ {
+            move |frame: &mut Frame<B>, rect: Rect| frame.render_widget(&props, rect)
+        }
+    };
 }
 
-pub type ParagraphProps<'a> = Paragraph<'a>;
+macro_rules! impl_stateful_widget {
+    ($name:ident, $widget:ident, $props:ident, $state:ident) => {
+        pub type $props<'a> = $widget<'a>;
 
-pub fn paragraph<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: ParagraphProps) {
-    frame.render_widget(props, rect);
+        pub fn $name<'a, B: Backend>(
+            #[cfg(feature = "reactive")] _cx: Scope,
+            props: $props<'a>,
+            state: &'a mut $state,
+        ) -> impl FnMut(&mut Frame<B>, Rect) + 'a {
+            move |frame: &mut Frame<B>, rect: Rect| {
+                frame.render_stateful_widget(&props, rect, state);
+            }
+        }
+    };
 }
 
-pub type ListProps<'a> = List<'a>;
-
-pub fn list<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: ListProps) {
-    frame.render_widget(props, rect);
+pub trait Props {
+    type Builder;
+    fn builder() -> Self::Builder;
 }
 
-pub type StatefulListProps<'a> = List<'a>;
-
-pub fn stateful_list<B: Backend>(
-    frame: &mut Frame<B>,
-    rect: Rect,
-    props: StatefulListProps,
-    state: &mut ListState,
-) {
-    frame.render_stateful_widget(props, rect, state);
+pub trait BuilderFacade {
+    fn builder() -> Self;
 }
 
-pub type TabsProps<'a> = Tabs<'a>;
-
-pub fn tabs<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: TabsProps) {
-    frame.render_widget(props, rect);
+pub trait BuildFacade {
+    fn build(self) -> Self;
 }
 
-pub type TableProps<'a> = Table<'a>;
+pub trait MakeBuilder {}
 
-pub fn table<B: Backend>(frame: &mut Frame<B>, rect: Rect, props: TableProps) {
-    frame.render_widget(props, rect);
+impl<T> BuilderFacade for T
+where
+    T: MakeBuilder + Default,
+{
+    fn builder() -> Self {
+        Self::default()
+    }
 }
 
-pub type StatefulTableProps<'a> = Table<'a>;
-
-pub fn stateful_table<B: Backend>(
-    frame: &mut Frame<B>,
-    rect: Rect,
-    props: TableProps,
-    state: &mut TableState,
-) {
-    frame.render_stateful_widget(props, rect, state);
+impl<T> BuildFacade for T
+where
+    T: MakeBuilder,
+{
+    fn build(self) -> Self {
+        self
+    }
 }
 
-pub trait NewExt<'a>
+impl<'a> MakeBuilder for Row<'a> {}
+impl<'a> MakeBuilder for Cell<'a> {}
+impl<'a> MakeBuilder for Span<'a> {}
+impl<'a> MakeBuilder for ListItem<'a> {}
+impl<'a> MakeBuilder for Line<'a> {}
+impl MakeBuilder for Style {}
+
+impl_widget!(block, Block, BlockProps);
+impl_widget!(paragraph, Paragraph, ParagraphProps);
+impl_widget!(list, List, ListProps);
+impl_widget!(tabs, Tabs, TabsProps);
+impl_widget!(table, Table, TableProps);
+impl_stateful_widget!(stateful_list, List, StatefulListProps, ListState);
+impl_stateful_widget!(stateful_table, Table, StatefulTableProps, TableState);
+
+pub trait NewExt<'a, T>
 where
     Self: 'a,
 {
-    fn new<T>(source: T) -> Self
-    where
-        Self: From<T>;
+    fn new(source: T) -> Self;
 }
 
 pub trait NewFrom {}
 
-impl<'a, S> NewExt<'a> for S
+impl<'a, S, T> NewExt<'a, T> for S
 where
     S: NewFrom + 'a,
+    Self: From<T>,
 {
-    fn new<T>(source: T) -> Self
-    where
-        Self: From<T>,
-    {
+    fn new(source: T) -> Self {
         Self::from(source)
     }
 }
 
-impl<'a> NewFrom for Spans<'a> {}
+impl<'a> NewFrom for Line<'a> {}
 impl<'a> NewFrom for Span<'a> {}
 impl<'a> NewFrom for Cell<'a> {}
 impl<'a> NewFrom for Text<'a> {}

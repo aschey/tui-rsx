@@ -6,9 +6,16 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ratatui = {git = "https://github.com/tui-rs-revival/ratatui", rev = "33b3f4e3122cc59eaa789c684dd17dae3a716be1", default-features = false}
-tui-rsx-macros = {path = "../tui-rsx-macros"}
+derive_builder = "0.12"
+leptos_reactive = { version = "0.4", optional = true }
+ratatui = { path = "../../../ratatui", default-features = false }
+tui-rsx-macros = { path = "../tui-rsx-macros" }
+typed-builder = "0.15"
 
 [dev-dependencies]
 crossterm = "0.26.1"
-ratatui = {git = "https://github.com/tui-rs-revival/ratatui", rev = "33b3f4e3122cc59eaa789c684dd17dae3a716be1"}
+ratatui = { path = "../../../ratatui" }
+
+[features]
+reactive = ["leptos_reactive"]
+default = ["reactive"]

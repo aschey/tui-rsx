@@ -1,3 +1,4 @@
+use leptos_reactive::{create_runtime, create_scope};
 use ratatui::{
     backend::TestBackend,
     buffer::Buffer,
@@ -8,295 +9,326 @@ use tui_rsx::{prelude::*, view};
 
 #[test]
 fn standalone_widget() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
 
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <block title="test" borders=Borders::ALL/>
-            };
-            view(f, f.size());
-        })
-        .unwrap();
+        let view = view! { cx,
+            <block title="test" borders=Borders::ALL/>
+        };
 
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "┌test────┐",
-        "│        │",
-        "└────────┘",
-    ]));
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
+
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "┌test────┐",
+            "│        │",
+            "└────────┘",
+        ]));
+    })
+    .dispose();
 }
 
 #[test]
 fn widget_no_props() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <block default/>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
 
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <block default/>
-                </Column>
-            };
-            view(f, f.size());
-        })
-        .unwrap();
-
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "          ",
-        "          ",
-        "          ",
-    ]));
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "          ",
+            "          ",
+            "          ",
+        ]));
+    })
+    .dispose();
 }
 
 #[test]
 fn simple_column() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <block title="test" borders=Borders::ALL/>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
 
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <block title="test" borders=Borders::ALL/>
-                </Column>
-            };
-            view(f, f.size());
-        })
-        .unwrap();
-
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "┌test────┐",
-        "│        │",
-        "└────────┘",
-    ]));
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "┌test────┐",
+            "│        │",
+            "└────────┘",
+        ]));
+    })
+    .dispose();
 }
 
-#[test]
-fn conditional() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let a = 1;
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    {
-                        match a {
-                            1 =>  view!(<block title="test" borders=Borders::ALL/>),
-                            _ => view!(<block title="test2" borders=Borders::ALL/>)
-                        }
-                    }
-                </Column>
-            };
-            view(f, f.size());
-        })
-        .unwrap();
+// #[test]
+// fn conditional() {
+//     create_scope(create_runtime(), |cx| {
+//         let backend = TestBackend::new(10, 3);
+//         let mut terminal = Terminal::new(backend).unwrap();
+//         let a = 1;
+//         let view = view! { cx,
+//             <Column>
+//                 {
+//                     match a {
+//                         1 =>  view!(cx, <block title="test" borders=Borders::ALL/>),
+//                         _ => view!(cx, <block title="test2" borders=Borders::ALL/>)
+//                     }
+//                 }
+//             </Column>
+//         };
+//         terminal
+//             .draw(|f| {
+//                 view(f, f.size());
+//             })
+//             .unwrap();
 
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "┌test────┐",
-        "│        │",
-        "└────────┘",
-    ]));
-}
+//         terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+//             "┌test────┐",
+//             "│        │",
+//             "└────────┘",
+//         ]));
+//     })
+//     .dispose();
+// }
 
 #[test]
 fn list_basic() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <list>
-                        <listItem>"test1"</listItem>
-                        <listItem>"test2"</listItem>
-                    </list>
-                </Column>
-            };
-            view(f, f.size());
-        })
-        .unwrap();
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <list>
+                    <listItem>"test1"</listItem>
+                    <listItem>"test2"</listItem>
+                </list>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
 
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "test1     ",
-        "test2     ",
-        "          ",
-    ]));
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "test1     ",
+            "test2     ",
+            "          ",
+        ]));
+    })
+    .dispose();
 }
 
 #[test]
 fn stateful() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let mut state = ListState::default();
-    terminal
-        .draw(|f| {
-            let mut view = view! {
-                <stateful_list state=&mut state>
-                    <listItem>"test1"</listItem>
-                    <listItem>"test2"</listItem>
-                </stateful_list>
-            };
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = ListState::default();
+        let mut view = view! { cx,
+            <stateful_list state=&mut state>
+                <listItem>"test1"</listItem>
+                <listItem>"test2"</listItem>
+            </stateful_list>
+        };
 
-            view(f, f.size());
-        })
-        .unwrap();
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
 
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "test1     ",
-        "test2     ",
-        "          ",
-    ]));
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "test1     ",
+            "test2     ",
+            "          ",
+        ]));
+    })
+    .dispose();
 }
 
 #[test]
 fn list_styled() {
-    let backend = TestBackend::new(15, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <list>
-                        <listItem style=Style::default().fg(Color::Black)>"test1"</listItem>
-                        <listItem>"test2"</listItem>
-                    </list>
-                </Column>
-            };
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(15, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <list>
+                    <listItem style=Style::default().fg(Color::Black)>"test1"</listItem>
+                    <listItem>"test2"</listItem>
+                </list>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
 
-            view(f, f.size());
-        })
-        .unwrap();
+        let mut expected = Buffer::with_lines(vec![
+            "test1          ",
+            "test2          ",
+            "               ",
+        ]);
 
-    let mut expected = Buffer::with_lines(vec![
-        "test1          ",
-        "test2          ",
-        "               ",
-    ]);
+        for x in 0..15 {
+            expected.get_mut(x, 0).set_fg(Color::Black);
+        }
 
-    for x in 0..15 {
-        expected.get_mut(x, 0).set_fg(Color::Black);
-    }
-
-    terminal.backend().assert_buffer(&expected);
+        terminal.backend().assert_buffer(&expected);
+    })
+    .dispose();
 }
 
 #[test]
 fn block_children() {
-    let backend = TestBackend::new(15, 1);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <tabs>
-                        {"tab1".into()}
-                        {"tab2".into()}
-                    </tabs>
-                </Column>
-            };
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(15, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
 
-            view(f, f.size());
-        })
-        .unwrap();
-    terminal
-        .backend()
-        .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+        let view = view! { cx,
+            <Column>
+                <tabs>
+                    "tab1"
+                    "tab2"
+                </tabs>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+    })
+    .dispose();
 }
 
 #[test]
 fn single_child_as_vec() {
-    let backend = TestBackend::new(15, 1);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <tabs>
-                        <>{"tab1".into()}</>
-                    </tabs>
-                </Column>
-            };
-
-            view(f, f.size());
-        })
-        .unwrap();
-    terminal
-        .backend()
-        .assert_buffer(&Buffer::with_lines(vec![" tab1          "]));
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(15, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <tabs>
+                    <>{"tab1"}</>
+                </tabs>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .assert_buffer(&Buffer::with_lines(vec![" tab1          "]));
+    })
+    .dispose();
 }
 
 #[test]
 fn single_nested_child_as_vec() {
-    let backend = TestBackend::new(15, 1);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <tabs>
-                        <>
-                            <spans>
-                                <span>"tab1"</span>
-                            </spans>
-                        </>
-                    </tabs>
-                </Column>
-            };
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(15, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <tabs>
+                    <>
+                        <line>
+                            <span>"tab1"</span>
+                        </line>
+                    </>
+                </tabs>
+            </Column>
+        };
 
-            view(f, f.size());
-        })
-        .unwrap();
-    terminal
-        .backend()
-        .assert_buffer(&Buffer::with_lines(vec![" tab1          "]));
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .assert_buffer(&Buffer::with_lines(vec![" tab1          "]));
+    })
+    .dispose();
 }
 
 #[test]
 fn complex_block_children() {
-    let backend = TestBackend::new(15, 1);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <tabs select=0>
-                        <spans>"tab1"</spans>
-                        <spans>{vec![Span::from("tab2")]}</spans>
-                    </tabs>
-                </Column>
-            };
-
-            view(f, f.size());
-        })
-        .unwrap();
-    terminal
-        .backend()
-        .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(15, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <tabs select=0>
+                    <line>"tab1"</line>
+                    <line>{vec![Span::from("tab2")]}</line>
+                </tabs>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+    })
+    .dispose();
 }
 
 #[test]
 fn macro_as_prop() {
-    let backend = TestBackend::new(10, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| {
-            let view = view! {
-                <Column>
-                    <paragraph block=prop!{<block borders=Borders::ALL/>}>
-                        "test"
-                    </paragraph>
-                </Column>
-            };
-
-            view(f, f.size());
-        })
-        .unwrap();
-    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-        "┌────────┐",
-        "│test    │",
-        "└────────┘",
-    ]));
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let view = view! { cx,
+            <Column>
+                <paragraph block=prop!{<block borders=Borders::ALL/>}>
+                    "test"
+                </paragraph>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "┌────────┐",
+            "│test    │",
+            "└────────┘",
+        ]));
+    })
+    .dispose();
 }

@@ -1,15 +1,16 @@
-use std::{error::Error, io};
-
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use ratatui::{
-    backend::CrosstermBackend,
-    style::{Color, Style},
-    Terminal, TerminalOptions, Viewport,
-};
+use leptos_reactive::{create_runtime, create_scope, Scope};
+use ratatui::{backend::Backend, backend::CrosstermBackend, Terminal, TerminalOptions, Viewport};
+use std::io;
 use tui_rsx::prelude::*;
+use typed_builder::TypedBuilder;
 
-pub fn main() -> Result<(), Box<dyn Error>> {
-    enable_raw_mode()?;
+pub fn main() {
+    create_scope(create_runtime(), run).dispose();
+}
+
+fn run(cx: Scope) {
+    enable_raw_mode().unwrap();
 
     let stdout = io::stdout();
     let backend = CrosstermBackend::new(stdout);
@@ -18,35 +19,49 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         TerminalOptions {
             viewport: Viewport::Inline(8),
         },
-    )?;
+    )
+    .unwrap();
+    let view = view! { cx,
+        <Column>
+            <block default length=4/>
+            <counter count=0/>
+            <Viewer text="blah".to_string()/>
+
+        </Column>
+    };
 
     terminal
         .draw(|f| {
-            let view = view! {
-            move <Row>
-                    <Column percentage=50>
-                        <tabs select=0 block=prop!{ <block borders=Borders::ALL/> }>
-                            <spans>"test"</spans>
-                            <spans>
-                                <span style=prop!{ <style fg=Color::Green/> }>"test3"</span>
-                                {Span::from("test4")}
-                            </spans>
-                        </tabs>
-                    </Column>
-                    <Column percentage=50>
-                        <list>
-                            <listItem>"test3"</listItem>
-                            <listItem>"test4"</listItem>
-                        </list>
-                    </Column>
-                </Row>
-            };
-
             view(f, f.size());
         })
         .unwrap();
 
-    disable_raw_mode()?;
+    disable_raw_mode().unwrap();
     println!();
-    Ok(())
+}
+
+#[derive(TypedBuilder)]
+pub struct CounterProps {
+    count: usize,
+}
+
+fn counter<B: Backend>(cx: Scope, props: CounterProps) -> impl Fn(&mut Frame<B>, Rect) {
+    let CounterProps { count } = props;
+    view! { cx,
+        <block title=format!("count {count}")/>
+    }
+}
+
+#[component]
+fn viewer<B: Backend>(
+    cx: Scope,
+    text: String,
+    #[prop(default = 20)] blah: usize,
+) -> impl Fn(&mut Frame<B>, Rect) {
+    view! { cx,
+        <list>
+            <listItem>{text}</listItem>
+            <listItem>"test2"</listItem>
+        </list>
+    }
 }
