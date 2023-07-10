@@ -70,13 +70,13 @@ impl Parse for Model {
         });
 
         // Make sure return type is correct
-        if !is_valid_into_view_return_type(&item.sig.output) {
-            abort!(
-                item.sig,
-                "return type is incorrect";
-                help = "return signature must be `-> impl IntoView`"
-            );
-        }
+        // if !is_valid_into_view_return_type(&item.sig.output) {
+        //     abort!(
+        //         item.sig,
+        //         "return type is incorrect";
+        //         help = "return signature must be `-> impl IntoView`"
+        //     );
+        // }
 
         Ok(Self {
             is_transparent: false,
@@ -190,7 +190,7 @@ impl ToTokens for Model {
         let prop_builder_fields = prop_builder_fields(vis, &props);
 
         let prop_names = prop_names(&props);
-        let used_prop_names = used_prop_names(&props);
+        let used_prop_names = prop_names_for_component(&props);
         let builder_name_doc =
             LitStr::new(&format!("Props for the [`{name}`] component."), name.span());
 
@@ -296,7 +296,7 @@ impl ToTokens for Model {
 
             #docs
             #component_fn_prop_docs
-            #[allow(non_snake_case, clippy::too_many_arguments)]
+            #[allow(non_snake_case, clippy::too_many_arguments, unused_mut)]
             // #tracing_instrument_attr
             #vis fn #name #impl_generics (
                 #[allow(unused_variables)]
@@ -591,7 +591,8 @@ fn prop_builder_fields(vis: &Visibility, props: &[Prop]) -> TokenStream {
                 prop_opts,
                 ty,
             } = prop;
-
+            let mut name = name.clone();
+            name.mutability = None;
             let builder_attrs = TypedBuilderOpts::from_opts(prop_opts, is_option(ty));
 
             let builder_docs = prop_to_doc(prop, PropDocStyle::Inline);
@@ -622,13 +623,17 @@ fn prop_names(props: &[Prop]) -> TokenStream {
         .collect()
 }
 
-fn used_prop_names(props: &[Prop]) -> TokenStream {
+fn prop_names_for_component(props: &[Prop]) -> TokenStream {
     props
         .iter()
         .filter(|Prop { ty, name, .. }| {
             !is_valid_scope_type(ty) && !name.ident.to_string().starts_with("_phantom")
         })
-        .map(|Prop { name, .. }| quote! { #name, })
+        .map(|Prop { name, .. }| {
+            let mut name = name.clone();
+            name.mutability = None;
+            quote! { #name, }
+        })
         .collect()
 }
 

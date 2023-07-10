@@ -1,6 +1,6 @@
-use leptos_reactive::{create_runtime, create_scope};
+use leptos_reactive::{create_runtime, create_scope, Scope};
 use ratatui::{
-    backend::TestBackend,
+    backend::{Backend, TestBackend},
     buffer::Buffer,
     style::{Color, Style},
     Terminal,
@@ -13,13 +13,13 @@ fn standalone_widget() {
         let backend = TestBackend::new(10, 3);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let view = view! { cx,
+        let mut view = view! { cx,
             <block title="test" borders=Borders::ALL/>
         };
 
         terminal
             .draw(|f| {
-                view(f, f.size());
+                view.view(f, f.size());
             })
             .unwrap();
 
@@ -37,14 +37,14 @@ fn widget_no_props() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(10, 3);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <block default/>
             </Column>
         };
         terminal
             .draw(|f| {
-                view(f, f.size());
+                view.view(f, f.size());
             })
             .unwrap();
 
@@ -62,7 +62,7 @@ fn simple_column() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(10, 3);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <block title="test" borders=Borders::ALL/>
             </Column>
@@ -82,43 +82,43 @@ fn simple_column() {
     .dispose();
 }
 
-// #[test]
-// fn conditional() {
-//     create_scope(create_runtime(), |cx| {
-//         let backend = TestBackend::new(10, 3);
-//         let mut terminal = Terminal::new(backend).unwrap();
-//         let a = 1;
-//         let view = view! { cx,
-//             <Column>
-//                 {
-//                     match a {
-//                         1 =>  view!(cx, <block title="test" borders=Borders::ALL/>),
-//                         _ => view!(cx, <block title="test2" borders=Borders::ALL/>)
-//                     }
-//                 }
-//             </Column>
-//         };
-//         terminal
-//             .draw(|f| {
-//                 view(f, f.size());
-//             })
-//             .unwrap();
+#[test]
+fn conditional() {
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(10, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let a = 1;
+        let mut view = view! { cx,
+            <Column>
+                {
+                    match a {
+                        1 =>  view!(cx, <block title="test" borders=Borders::ALL/>),
+                        _ => view!(cx, <block title="test2" borders=Borders::ALL/>)
+                    }
+                }
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view(f, f.size());
+            })
+            .unwrap();
 
-//         terminal.backend().assert_buffer(&Buffer::with_lines(vec![
-//             "┌test────┐",
-//             "│        │",
-//             "└────────┘",
-//         ]));
-//     })
-//     .dispose();
-// }
+        terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+            "┌test────┐",
+            "│        │",
+            "└────────┘",
+        ]));
+    })
+    .dispose();
+}
 
 #[test]
 fn list_basic() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(10, 3);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <list>
                     <listItem>"test1"</listItem>
@@ -156,7 +156,7 @@ fn stateful() {
 
         terminal
             .draw(|f| {
-                view(f, f.size());
+                view.view(f, f.size());
             })
             .unwrap();
 
@@ -174,7 +174,7 @@ fn list_styled() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(15, 3);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <list>
                     <listItem style=Style::default().fg(Color::Black)>"test1"</listItem>
@@ -209,7 +209,7 @@ fn block_children() {
         let backend = TestBackend::new(15, 1);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <tabs>
                     "tab1"
@@ -234,7 +234,7 @@ fn single_child_as_vec() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(15, 1);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <tabs>
                     <>{"tab1"}</>
@@ -243,7 +243,7 @@ fn single_child_as_vec() {
         };
         terminal
             .draw(|f| {
-                view(f, f.size());
+                view.view(f, f.size());
             })
             .unwrap();
         terminal
@@ -258,7 +258,7 @@ fn single_nested_child_as_vec() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(15, 1);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <tabs>
                     <>
@@ -287,7 +287,7 @@ fn complex_block_children() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(15, 1);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <tabs select=0>
                     <line>"tab1"</line>
@@ -312,7 +312,7 @@ fn macro_as_prop() {
     create_scope(create_runtime(), |cx| {
         let backend = TestBackend::new(10, 3);
         let mut terminal = Terminal::new(backend).unwrap();
-        let view = view! { cx,
+        let mut view = view! { cx,
             <Column>
                 <paragraph block=prop!{<block borders=Borders::ALL/>}>
                     "test"
@@ -329,6 +329,65 @@ fn macro_as_prop() {
             "│test    │",
             "└────────┘",
         ]));
+    })
+    .dispose();
+}
+
+#[test]
+fn array_as_variable() {
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(15, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let tab_items = vec!["tab1", "tab2"];
+        let mut view = view! { cx,
+            <Column>
+                <tabs>
+                    {tab_items}
+                </tabs>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view.view(f, f.size());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .assert_buffer(&Buffer::with_lines(vec![" tab1 │ tab2   "]));
+    })
+    .dispose();
+}
+
+#[test]
+fn simple_custom_component() {
+    #[component]
+    fn viewer<B: Backend>(cx: Scope, #[prop(into)] text: String) -> impl View<B> {
+        view! { cx,
+            <list>
+                <>
+                    <listItem>{text}</listItem>
+                </>
+            </list>
+        }
+    }
+
+    create_scope(create_runtime(), |cx| {
+        let backend = TestBackend::new(2, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut view = view! { cx,
+            <Column>
+                <Viewer text="hi"/>
+            </Column>
+        };
+        terminal
+            .draw(|f| {
+                view.view(f, f.size());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .assert_buffer(&Buffer::with_lines(vec!["hi"]));
     })
     .dispose();
 }

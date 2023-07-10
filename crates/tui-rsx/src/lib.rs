@@ -17,7 +17,7 @@ macro_rules! impl_widget {
         pub fn $name<B: Backend>(
             #[cfg(feature = "reactive")] _cx: Scope,
             props: $props,
-        ) -> impl Fn(&mut Frame<B>, Rect) + '_ {
+        ) -> impl View<B> + '_ {
             move |frame: &mut Frame<B>, rect: Rect| frame.render_widget(&props, rect)
         }
     };
@@ -31,7 +31,7 @@ macro_rules! impl_stateful_widget {
             #[cfg(feature = "reactive")] _cx: Scope,
             props: $props<'a>,
             state: &'a mut $state,
-        ) -> impl FnMut(&mut Frame<B>, Rect) + 'a {
+        ) -> impl View<B> + 'a {
             move |frame: &mut Frame<B>, rect: Rect| {
                 frame.render_stateful_widget(&props, rect, state);
             }
@@ -87,6 +87,19 @@ impl_widget!(table, Table, TableProps);
 impl_stateful_widget!(stateful_list, List, StatefulListProps, ListState);
 impl_stateful_widget!(stateful_table, Table, StatefulTableProps, TableState);
 
+pub trait View<B: Backend> {
+    fn view(&mut self, frame: &mut Frame<B>, rect: Rect);
+}
+
+impl<B: Backend, F> View<B> for F
+where
+    F: FnMut(&mut Frame<B>, Rect),
+{
+    fn view(&mut self, frame: &mut Frame<B>, rect: Rect) {
+        (self)(frame, rect)
+    }
+}
+
 pub trait NewExt<'a, T>
 where
     Self: 'a,
@@ -111,23 +124,20 @@ impl<'a> NewFrom for Span<'a> {}
 impl<'a> NewFrom for Cell<'a> {}
 impl<'a> NewFrom for Text<'a> {}
 
-pub trait SpanExt<'a> {
+pub trait StyleExt<'a> {
     fn style(self, style: Style) -> Self;
 }
 
-impl<'a> SpanExt<'a> for Span<'a> {
+impl<'a> StyleExt<'a> for Span<'a> {
     fn style(mut self, style: Style) -> Self {
         self.style = style;
         self
     }
 }
 
-pub trait TextExt<'a> {
-    fn style(self, style: Style) -> Self;
-}
-
-impl<'a> TextExt<'a> for Text<'a> {
+impl<'a> StyleExt<'a> for Text<'a> {
     fn style(mut self, style: Style) -> Self {
+        self.reset_style();
         self.patch_style(style);
         self
     }

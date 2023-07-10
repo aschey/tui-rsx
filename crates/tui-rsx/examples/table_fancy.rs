@@ -25,7 +25,7 @@ pub fn run(cx: Scope) {
     )
     .unwrap();
 
-    let view = view! { cx,
+    let mut view = view! { cx,
         <table
             style=prop!(<style fg=Color::White/>)
             header=prop!(
@@ -60,7 +60,7 @@ pub fn run(cx: Scope) {
 
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
 

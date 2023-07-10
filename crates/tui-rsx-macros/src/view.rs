@@ -74,7 +74,7 @@ impl View {
         };
 
         if let Some(i) = i {
-            quote!((#layout_tokens)(f, chunks[#i]);)
+            quote!((#layout_tokens).view(f, chunks[#i]);)
         } else {
             layout_tokens
         }
@@ -87,7 +87,7 @@ impl View {
                 quote! { #(#child_fns)* }
             }
             ViewType::Block { fn_name, tokens } => {
-                quote! { let #fn_name = || #tokens; }
+                quote! { let mut #fn_name = move |f: &mut Frame<_>, chunks: Rect| #tokens.view(f, chunks); }
             }
             ViewType::Element {
                 name,
@@ -96,13 +96,13 @@ impl View {
                 state,
             } => match (props, state) {
                 (Some(props), Some(state)) => {
-                    quote! { let #fn_name = #name(#props, #state); }
+                    quote! { let mut #fn_name = #name(#props, #state); }
                 }
                 (Some(props), None) => {
-                    quote! { let #fn_name = #name(#props); }
+                    quote! { let mut #fn_name = #name(#props); }
                 }
                 (_, _) => {
-                    quote! { let #fn_name = #name(); }
+                    quote! { let mut #fn_name = #name(); }
                 }
             },
         }
@@ -118,7 +118,7 @@ impl View {
             }
             ViewType::Block { fn_name, .. } => {
                 if let Some(i) = i {
-                    quote! { (#fn_name)(f, chunks[#i]) }
+                    quote! { (#fn_name).view(f, chunks[#i]) }
                 } else {
                     quote! { (#fn_name) }
                 }
@@ -130,7 +130,7 @@ impl View {
                 ..
             } => {
                 if let Some(i) = i {
-                    quote! { #fn_name(f, chunks[#i]); }
+                    quote! { #fn_name.view(f, chunks[#i]); }
                 } else {
                     quote! { #fn_name }
                 }
