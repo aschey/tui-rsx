@@ -4,7 +4,7 @@ use convert_case::{
     Casing,
 };
 use proc_macro2::{Ident, Span, TokenStream};
-use proc_macro_error::abort;
+use proc_macro_error::{abort, abort_call_site};
 use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
 use syn::{
     parse::Parse, parse_quote, spanned::Spanned, AngleBracketedGenericArguments, Attribute, FnArg,
@@ -35,6 +35,13 @@ impl Parse for Model {
             .into_iter()
             .map(Prop::new)
             .collect::<Vec<_>>();
+        let children_count = props.iter().filter(|p| p.prop_opts.children).count();
+        if children_count > 1 {
+            abort!(
+                item.sig.inputs,
+                "only one parameter can be used as children"
+            );
+        }
 
         let scope_name = if props.is_empty() {
             abort!(
@@ -256,6 +263,35 @@ impl ToTokens for Model {
             }
         };
 
+        let builder_new = if let Some(children_prop) = props.iter().find(|p| p.prop_opts.children) {
+            let mut prop_name = children_prop.name.clone();
+            prop_name.mutability = None;
+            let prop_type = children_prop.ty.clone();
+            let generics_tokens: Vec<_> = body
+                .sig
+                .generics
+                .type_params()
+                .map(|p| p.ident.to_token_stream())
+                .collect();
+            let return_generics = if generics_tokens.is_empty() {
+                quote! {}
+            } else {
+                quote! { #(#generics_tokens),*, }
+            };
+            // -1 for cx arg and -1 for current arg
+            let extra_args: Vec<TokenStream> = (0..props.len() - 2).map(|_| quote! {()}).collect();
+
+            quote! {
+                impl #impl_generics #props_name #generics #where_clause {
+                    fn new(#prop_name: #prop_type) -> #props_builder_name <#return_generics ((#prop_type,), #(#extra_args),*)> {
+                        Self::builder().#prop_name(#prop_name)
+                    }
+                }
+            }
+        } else {
+            quote! {}
+        };
+        // abort_call_site!(format!("{builder_new}"));
         // let into_view = if no_props {
         //     quote! {
         //         impl #impl_generics ::leptos::IntoView for #props_name #generics #where_clause {
@@ -285,12 +321,14 @@ impl ToTokens for Model {
                 #prop_builder_fields
             }
 
-            impl #impl_generics ::tui_rsx::Props for #props_name #generics #where_clause {
-                type Builder = #props_builder_name #generics;
-                fn builder() -> Self::Builder {
-                    #props_name::builder()
-                }
-            }
+            // impl #impl_generics ::tui_rsx::Props for #props_name #generics #where_clause {
+            //     type Builder = #props_builder_name #generics;
+            //     fn builder() -> Self::Builder {
+            //         #props_name::builder()
+            //     }
+            // }
+
+            #builder_new
 
             // #into_view
 
@@ -521,6 +559,7 @@ struct PropOpt {
     #[attribute(example = "5 * 10")]
     default: Option<syn::Expr>,
     into: bool,
+    children: bool,
 }
 
 struct TypedBuilderOpts {

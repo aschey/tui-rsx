@@ -39,10 +39,10 @@ macro_rules! impl_stateful_widget {
     };
 }
 
-pub trait Props {
-    type Builder;
-    fn builder() -> Self::Builder;
-}
+// pub trait Props {
+//     type Builder;
+//     fn builder() -> Self::Builder;
+// }
 
 pub trait BuilderFacade {
     fn builder() -> Self;
