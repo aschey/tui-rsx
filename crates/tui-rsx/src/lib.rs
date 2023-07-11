@@ -1,4 +1,3 @@
-use leptos_reactive::Scope;
 use prelude::*;
 use ratatui::{backend::Backend, layout::Rect, style::Style, Frame};
 pub use tui_rsx_macros::*;
@@ -14,10 +13,7 @@ macro_rules! impl_widget {
 
         impl<'a> MakeBuilder for $props<'a> {}
 
-        pub fn $name<B: Backend>(
-            #[cfg(feature = "reactive")] _cx: Scope,
-            props: $props,
-        ) -> impl View<B> + '_ {
+        pub fn $name<T, B: Backend>(_cx: T, props: $props) -> impl View<B> + '_ {
             move |frame: &mut Frame<B>, rect: Rect| frame.render_widget(&props, rect)
         }
     };
@@ -27,8 +23,8 @@ macro_rules! impl_stateful_widget {
     ($name:ident, $widget:ident, $props:ident, $state:ident) => {
         pub type $props<'a> = $widget<'a>;
 
-        pub fn $name<'a, B: Backend>(
-            #[cfg(feature = "reactive")] _cx: Scope,
+        pub fn $name<'a, T, B: Backend>(
+            _cx: T,
             props: $props<'a>,
             state: &'a mut $state,
         ) -> impl View<B> + 'a {

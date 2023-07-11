@@ -7,7 +7,6 @@ version = "0.1.0"
 
 [dependencies]
 derive_builder = "0.12"
-leptos_reactive = { version = "0.4", optional = true }
 ratatui = { path = "../../../ratatui", default-features = false }
 tui-rsx-macros = { path = "../tui-rsx-macros" }
 typed-builder = "0.15"
@@ -15,7 +14,3 @@ typed-builder = "0.15"
 [dev-dependencies]
 crossterm = "0.26.1"
 ratatui = { path = "../../../ratatui" }
-
-[features]
-reactive = ["leptos_reactive"]
-default = ["reactive"]

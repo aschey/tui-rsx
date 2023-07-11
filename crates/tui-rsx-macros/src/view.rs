@@ -1,4 +1,4 @@
-use proc_macro2::{Ident, Span};
+use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error::abort_call_site;
 use quote::{quote, ToTokens, TokenStreamExt};
 use rstml::node::{Node, NodeAttribute, NodeElement};
@@ -118,7 +118,7 @@ impl View {
             }
             ViewType::Block { fn_name, .. } => {
                 if let Some(i) = i {
-                    quote! { (#fn_name).view(f, chunks[#i]) }
+                    quote! { (#fn_name).view(f, chunks[#i]); }
                 } else {
                     quote! { (#fn_name) }
                 }
@@ -162,7 +162,7 @@ struct NodeAttributes {
 
 impl NodeAttributes {
     fn from_custom(
-        cx_name: Option<&Ident>,
+        cx_name: Option<&TokenStream>,
         element: &NodeElement,
         children: proc_macro2::TokenStream,
         object_suffix: &str,
@@ -180,7 +180,7 @@ impl NodeAttributes {
         )
     }
     fn from_nodes(
-        cx_name: Option<&Ident>,
+        cx_name: Option<&TokenStream>,
         tag_name: Option<&str>,
         nodes: &[NodeAttribute],
         args: Option<proc_macro2::TokenStream>,
@@ -290,7 +290,7 @@ fn build_struct(
     }
 }
 
-pub(crate) fn parse_root_nodes(cx_name: &Ident, nodes: Vec<Node>) -> View {
+pub(crate) fn parse_root_nodes(cx_name: &TokenStream, nodes: Vec<Node>) -> View {
     if let [node] = &nodes[..] {
         parse_root_node(cx_name, node)
     } else {
@@ -298,7 +298,7 @@ pub(crate) fn parse_root_nodes(cx_name: &Ident, nodes: Vec<Node>) -> View {
     }
 }
 
-fn parse_root_node(cx_name: &Ident, node: &Node) -> View {
+fn parse_root_node(cx_name: &TokenStream, node: &Node) -> View {
     if let Node::Element(element) = node {
         parse_element(cx_name, element)
     } else {
@@ -306,7 +306,7 @@ fn parse_root_node(cx_name: &Ident, node: &Node) -> View {
     }
 }
 
-fn parse_elements(cx_name: &Ident, nodes: &[Node]) -> Vec<View> {
+fn parse_elements(cx_name: &TokenStream, nodes: &[Node]) -> Vec<View> {
     let mut views = vec![];
     for node in nodes {
         match node {
@@ -385,7 +385,7 @@ pub(crate) fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::Token
     }
 }
 
-fn parse_element(cx_name: &Ident, element: &NodeElement) -> View {
+fn parse_element(cx_name: &TokenStream, element: &NodeElement) -> View {
     match element.name().to_string().as_str() {
         "Row" | "row" => {
             let children = parse_elements(cx_name, &element.children);

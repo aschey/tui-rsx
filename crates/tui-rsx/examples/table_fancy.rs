@@ -1,5 +1,4 @@
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use leptos_reactive::{create_runtime, create_scope, Scope};
 use ratatui::{
     backend::CrosstermBackend,
     style::{Color, Style},
@@ -9,10 +8,6 @@ use std::io;
 use tui_rsx::prelude::*;
 
 pub fn main() {
-    create_scope(create_runtime(), run).dispose();
-}
-
-pub fn run(cx: Scope) {
     enable_raw_mode().unwrap();
 
     let stdout = io::stdout();
@@ -25,7 +20,7 @@ pub fn run(cx: Scope) {
     )
     .unwrap();
 
-    let mut view = view! { cx,
+    let mut view = view! {
         <table
             style=prop!(<style fg=Color::White/>)
             header=prop!(

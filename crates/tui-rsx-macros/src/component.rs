@@ -17,6 +17,7 @@ pub struct Model {
     vis: Visibility,
     name: Ident,
     scope_name: PatIdent,
+    scope_type: Type,
     props: Vec<Prop>,
     body: ItemFn,
     ret: ReturnType,
@@ -43,20 +44,22 @@ impl Parse for Model {
             );
         }
 
-        let scope_name = if props.is_empty() {
+        let (scope_name, scope_type) = if props.is_empty() {
             abort!(
                 item.sig,
                 "this method requires a `Scope` parameter";
                 help = "try `fn {}(cx: Scope, /* ... */)`", item.sig.ident
             );
-        } else if !is_valid_scope_type(&props[0].ty) {
-            abort!(
-                item.sig.inputs,
-                "this method requires a `Scope` parameter";
-                help = "try `fn {}(cx: Scope, /* ... */ */)`", item.sig.ident
-            );
-        } else {
-            props[0].name.clone()
+        }
+        // else if !is_valid_scope_type(&props[0].ty) {
+        //     abort!(
+        //         item.sig.inputs,
+        //         "this method requires a `Scope` parameter";
+        //         help = "try `fn {}(cx: Scope, /* ... */ */)`", item.sig.ident
+        //     );
+        // }
+        else {
+            (props[0].name.clone(), props[0].ty.clone())
         };
 
         // We need to remove the `#[doc = ""]` and `#[builder(_)]`
@@ -91,6 +94,7 @@ impl Parse for Model {
             vis: item.vis.clone(),
             name: convert_from_snake_case(&item.sig.ident),
             scope_name,
+            scope_type,
             props,
             ret: item.sig.output.clone(),
             body: item,
@@ -128,12 +132,13 @@ impl ToTokens for Model {
             vis,
             name,
             scope_name,
+            scope_type,
             props,
             body,
             ret,
         } = self;
 
-        let no_props = props.len() == 1;
+        let no_props = false; //props.len() == 1;
 
         let mut body = body.to_owned();
         let mut props = props.to_owned();
@@ -338,7 +343,7 @@ impl ToTokens for Model {
             // #tracing_instrument_attr
             #vis fn #name #impl_generics (
                 #[allow(unused_variables)]
-                #scope_name: ::leptos_reactive::Scope,
+                #scope_name: #scope_type,
                 #props_arg
             ) #ret #(+ #lifetimes)*
             #where_clause
@@ -622,7 +627,8 @@ impl ToTokens for TypedBuilderOpts {
 fn prop_builder_fields(vis: &Visibility, props: &[Prop]) -> TokenStream {
     props
         .iter()
-        .filter(|Prop { ty, .. }| !is_valid_scope_type(ty))
+        .skip(1)
+        // .filter(|Prop { ty, .. }| !is_valid_scope_type(ty))
         .map(|prop| {
             let Prop {
                 docs,
@@ -657,7 +663,8 @@ fn prop_builder_fields(vis: &Visibility, props: &[Prop]) -> TokenStream {
 fn prop_names(props: &[Prop]) -> TokenStream {
     props
         .iter()
-        .filter(|Prop { ty, .. }| !is_valid_scope_type(ty))
+        .skip(1)
+        // .filter(|Prop { ty, .. }| !is_valid_scope_type(ty))
         .map(|Prop { name, .. }| quote! { #name, })
         .collect()
 }
@@ -665,9 +672,8 @@ fn prop_names(props: &[Prop]) -> TokenStream {
 fn prop_names_for_component(props: &[Prop]) -> TokenStream {
     props
         .iter()
-        .filter(|Prop { ty, name, .. }| {
-            !is_valid_scope_type(ty) && !name.ident.to_string().starts_with("_phantom")
-        })
+        .skip(1)
+        .filter(|Prop { name, .. }| name.ident.to_string().as_str() != "_phantom")
         .map(|Prop { name, .. }| {
             let mut name = name.clone();
             name.mutability = None;
@@ -843,15 +849,15 @@ fn prop_to_doc(
     }
 }
 
-fn is_valid_scope_type(ty: &Type) -> bool {
-    [
-        parse_quote!(Scope),
-        parse_quote!(leptos_reactive::Scope),
-        parse_quote!(::leptos_reactive::Scope),
-    ]
-    .iter()
-    .any(|test| ty == test)
-}
+// fn is_valid_scope_type(ty: &Type) -> bool {
+//     [
+//         parse_quote!(Scope),
+//         parse_quote!(leptos_reactive::Scope),
+//         parse_quote!(::leptos_reactive::Scope),
+//     ]
+//     .iter()
+//     .any(|test| ty == test)
+// }
 
 fn is_valid_into_view_return_type(ty: &ReturnType) -> bool {
     [
