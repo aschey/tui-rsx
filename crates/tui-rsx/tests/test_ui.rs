@@ -80,8 +80,8 @@ fn conditional() {
         <Column>
             {
                 match a {
-                    1 => Box::new(view!(<block title="test" borders=Borders::ALL/>)),
-                    _ => Box::new(view!(<block title="test2" borders=Borders::ALL/>))
+                    1 => view!(<block title="test" borders=Borders::ALL/>),
+                    _ => view!(<block title="test2" borders=Borders::ALL/>)
                 }
             }
         </Column>
@@ -120,6 +120,36 @@ fn list_basic() {
     terminal.backend().assert_buffer(&Buffer::with_lines(vec![
         "test1     ",
         "test2     ",
+        "          ",
+    ]));
+}
+
+#[test]
+fn prop_iteration() {
+    let backend = TestBackend::new(10, 6);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = view! {
+        <Column>
+            <list>
+                {
+                    (0..5).map(|i| prop!(<listItem>{format!("test{i}")}</listItem>))
+                        .collect::<Vec<_>>()
+                }
+            </list>
+        </Column>
+    };
+    terminal
+        .draw(|f| {
+            view(f, f.size());
+        })
+        .unwrap();
+
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "test0     ",
+        "test1     ",
+        "test2     ",
+        "test3     ",
+        "test4     ",
         "          ",
     ]));
 }
