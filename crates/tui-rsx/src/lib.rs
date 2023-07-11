@@ -96,6 +96,20 @@ where
     }
 }
 
+pub trait LazyView<B: Backend> {
+    fn view(&mut self, frame: &mut Frame<B>, rect: Rect);
+}
+
+impl<B: Backend, F, Ret> LazyView<B> for F
+where
+    F: FnMut() -> Ret,
+    Ret: View<B>,
+{
+    fn view(&mut self, frame: &mut Frame<B>, rect: Rect) {
+        (self)().view(frame, rect)
+    }
+}
+
 pub trait NewExt<'a, T>
 where
     Self: 'a,
