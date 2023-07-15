@@ -7,9 +7,11 @@ version = "0.1.0"
 
 [dependencies]
 derive_builder = "0.12"
+once_cell = "1"
 ratatui = { path = "../../../ratatui", default-features = false }
 tui-rsx-macros = { path = "../tui-rsx-macros" }
 typed-builder = "0.15"
+typemap = "0.3"
 
 [dev-dependencies]
 crossterm = "0.26.1"

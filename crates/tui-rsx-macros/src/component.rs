@@ -9,7 +9,7 @@ use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
 use syn::{
     parse::Parse, parse_quote, spanned::Spanned, AngleBracketedGenericArguments, Attribute, FnArg,
     GenericArgument, Item, ItemFn, LitStr, Meta, Pat, PatIdent, Path, PathArguments, ReturnType,
-    Stmt, Type, TypePath, Visibility,
+    Stmt, Type, TypeParamBound, TypePath, Visibility,
 };
 pub struct Model {
     is_transparent: bool,
@@ -21,12 +21,12 @@ pub struct Model {
     props: Vec<Prop>,
     body: ItemFn,
     ret: ReturnType,
+    view_type: Type,
 }
 
 impl Parse for Model {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut item = ItemFn::parse(input)?;
-
         let docs = Docs::new(&item.attrs);
 
         let props = item
@@ -50,7 +50,10 @@ impl Parse for Model {
                 "this method requires a `Scope` parameter";
                 help = "try `fn {}(cx: Scope, /* ... */)`", item.sig.ident
             );
-        }
+        } else {
+            (props[0].name.clone(), props[0].ty.clone())
+        };
+
         // else if !is_valid_scope_type(&props[0].ty) {
         //     abort!(
         //         item.sig.inputs,
@@ -58,9 +61,6 @@ impl Parse for Model {
         //         help = "try `fn {}(cx: Scope, /* ... */ */)`", item.sig.ident
         //     );
         // }
-        else {
-            (props[0].name.clone(), props[0].ty.clone())
-        };
 
         // We need to remove the `#[doc = ""]` and `#[builder(_)]`
         // attrs from the function signature
@@ -79,6 +79,7 @@ impl Parse for Model {
             }
         });
 
+        let view_type = get_view_generics(&item.sig.output);
         // Make sure return type is correct
         // if !is_valid_into_view_return_type(&item.sig.output) {
         //     abort!(
@@ -98,8 +99,26 @@ impl Parse for Model {
             props,
             ret: item.sig.output.clone(),
             body: item,
+            view_type,
         })
     }
+}
+
+fn get_view_generics(return_type: &ReturnType) -> Type {
+    if let ReturnType::Type(_, return_type) = &return_type {
+        if let Type::ImplTrait(impl_trait) = return_type.as_ref() {
+            let bound = impl_trait.bounds.first().unwrap();
+            if let TypeParamBound::Trait(bound_trait) = bound {
+                if let PathArguments::AngleBracketed(args) = &bound_trait.path.segments[0].arguments
+                {
+                    if let GenericArgument::Type(generic_type) = &args.args.first().unwrap() {
+                        return generic_type.clone();
+                    }
+                }
+            }
+        }
+    };
+    abort!(return_type,"return type is incorrect"; help = "return signature must be `-> impl View<B>`");
 }
 
 // implemented manually because Vec::drain_filter is nightly only
@@ -136,6 +155,7 @@ impl ToTokens for Model {
             props,
             body,
             ret,
+            view_type,
         } = self;
 
         let no_props = false; //props.len() == 1;
@@ -162,6 +182,8 @@ impl ToTokens for Model {
         }
 
         body.sig.ident = format_ident!("__{}", body.sig.ident);
+        body.sig.inputs.push(syn::parse_quote!(parent_id: String));
+        body.sig.output = syn::parse_quote!(-> impl LazyView<#view_type>);
         #[allow(clippy::redundant_clone)] // false positive
         let body_name = body.sig.ident.clone();
 
@@ -172,6 +194,22 @@ impl ToTokens for Model {
             .type_params()
             .map(|p| p.ident.to_token_stream())
             .collect();
+
+        props.push(Prop {
+            docs: Docs::new(&[]),
+            prop_opts: Default::default(),
+            name: PatIdent {
+                attrs: vec![],
+                by_ref: None,
+                mutability: None,
+                ident: Ident::new("__caller_id", Span::call_site()),
+                subpat: None,
+            },
+            ty: Type::Path(TypePath {
+                qself: None,
+                path: syn::parse_quote!(String),
+            }),
+        });
 
         if !body.sig.generics.params.is_empty() {
             props.push(Prop {
@@ -247,7 +285,7 @@ impl ToTokens for Model {
         //     }
         // };
         let component = quote! {
-            #body_name(#scope_name, #used_prop_names)
+            ::tui_rsx::LazyViewWrapper::new(#body_name(#scope_name, #used_prop_names __caller_id.clone()))
         };
 
         let props_arg = if no_props {
@@ -297,6 +335,35 @@ impl ToTokens for Model {
             quote! {}
         };
         // abort_call_site!(format!("{builder_new}"));
+
+        let cache_name = format_ident!("{}_CACHE", body.sig.ident.to_string().to_uppercase());
+        let widget_cache_decl = quote! {
+            thread_local! {
+                static #cache_name: ::std::cell::RefCell<::tui_rsx::once_cell::sync::Lazy<::tui_rsx::typemap::TypeMap>> =
+                    ::std::cell::RefCell::new(::tui_rsx::once_cell::sync::Lazy::new(::tui_rsx::typemap::TypeMap::new));
+            }
+        };
+
+        let widget_cache_impl = quote! {
+            #cache_name.with(|c| {
+                let mut cache_mut = c.borrow_mut();
+                if let Some(map) = cache_mut.get_mut::<::tui_rsx::KeyWrapper<#view_type>>() {
+                    if let Some(cache) = map.get(&__caller_id) {
+                        cache.clone()
+                    } else {
+                        let res = ::std::rc::Rc::new(::std::cell::RefCell::new(#component));
+                        map.insert(__caller_id, res.clone());
+                        res
+                    }
+                } else {
+                    let mut map = ::std::collections::HashMap::<String, ::std::rc::Rc<::std::cell::RefCell<dyn View<#view_type>>>>::new();
+                    let res = ::std::rc::Rc::new(::std::cell::RefCell::new(#component));
+                    map.insert(__caller_id, res.clone());
+                    cache_mut.insert::<::tui_rsx::KeyWrapper<#view_type>>(map);
+                    res
+                }
+            })
+        };
         // let into_view = if no_props {
         //     quote! {
         //         impl #impl_generics ::leptos::IntoView for #props_name #generics #where_clause {
@@ -320,7 +387,7 @@ impl ToTokens for Model {
             #[doc = ""]
             #docs
             #component_fn_prop_docs
-            #[derive(::typed_builder::TypedBuilder)]
+            #[derive(::tui_rsx::typed_builder::TypedBuilder)]
             #[builder(doc)]
             #vis struct #props_name #impl_generics #where_clause {
                 #prop_builder_fields
@@ -334,6 +401,8 @@ impl ToTokens for Model {
             // }
 
             #builder_new
+
+            #widget_cache_decl
 
             // #into_view
 
@@ -354,7 +423,7 @@ impl ToTokens for Model {
 
                 // #tracing_span_expr
 
-                #component
+                #widget_cache_impl
             }
         };
 
@@ -673,7 +742,10 @@ fn prop_names_for_component(props: &[Prop]) -> TokenStream {
     props
         .iter()
         .skip(1)
-        .filter(|Prop { name, .. }| name.ident.to_string().as_str() != "_phantom")
+        .filter(|Prop { name, .. }| {
+            let name_str = name.ident.to_string();
+            name_str != "_phantom" && name_str != "__caller_id"
+        })
         .map(|Prop { name, .. }| {
             let mut name = name.clone();
             name.mutability = None;
@@ -859,16 +931,16 @@ fn prop_to_doc(
 //     .any(|test| ty == test)
 // }
 
-fn is_valid_into_view_return_type(ty: &ReturnType) -> bool {
-    [
-        parse_quote!(-> impl Fn(&mut Frame<B>, Rect)),
-        parse_quote!(-> impl Fn(&mut Frame<CrosstermBackend<Stdout>>, Rect)),
-        // parse_quote!(-> impl leptos::IntoView),
-        // parse_quote!(-> impl ::leptos::IntoView),
-    ]
-    .iter()
-    .any(|test| ty == test)
-}
+// fn is_valid_into_view_return_type(ty: &ReturnType) -> bool {
+//     [
+//         parse_quote!(-> impl Fn(&mut Frame<B>, Rect)),
+//         parse_quote!(-> impl Fn(&mut Frame<CrosstermBackend<Stdout>>, Rect)),
+//         // parse_quote!(-> impl leptos::IntoView),
+//         // parse_quote!(-> impl ::leptos::IntoView),
+//     ]
+//     .iter()
+//     .any(|test| ty == test)
+// }
 
 fn value_to_string(value: &syn::Expr) -> Option<String> {
     match &value {

@@ -20,7 +20,7 @@ pub fn main() {
     )
     .unwrap();
 
-    let mut view = view! {
+    let mut view = mount! {
         <table
             style=prop!(<style fg=Color::White/>)
             header=prop!(

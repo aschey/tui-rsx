@@ -3,7 +3,7 @@ use proc_macro_error::abort_call_site;
 use quote::{quote, ToTokens, TokenStreamExt};
 use rstml::node::{Node, NodeAttribute, NodeElement};
 use std::sync::atomic::AtomicUsize;
-use std::{ops::Deref, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
 use syn::{Block, Expr, ExprLit, Lit, LitInt};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
@@ -166,6 +166,7 @@ impl NodeAttributes {
         element: &NodeElement,
         children: proc_macro2::TokenStream,
         object_suffix: &str,
+        include_parent_id: bool,
     ) -> Self {
         Self::from_nodes(
             cx_name,
@@ -177,6 +178,7 @@ impl NodeAttributes {
                 Some(children)
             },
             object_suffix,
+            include_parent_id,
         )
     }
     fn from_nodes(
@@ -185,6 +187,7 @@ impl NodeAttributes {
         nodes: &[NodeAttribute],
         args: Option<proc_macro2::TokenStream>,
         object_suffix: &str,
+        include_parent_id: bool,
     ) -> Self {
         let mut attrs = Self {
             constraint: Constraint::Min,
@@ -215,7 +218,6 @@ impl NodeAttributes {
                     }
                     "state" => {
                         if let Some(val) = &attribute.value() {
-                            let val = val.deref();
                             attrs.state = Some(val.to_token_stream());
                         }
                     }
@@ -224,26 +226,23 @@ impl NodeAttributes {
                         let func_name = Ident::new(name, Span::call_site());
                         if let Some(tag_name) = tag_name {
                             if let Some(val) = &attribute.value() {
-                                let val = val.deref();
                                 if let Some(props) = attrs.props {
                                     attrs.props = Some(quote! {
                                         #props.#func_name(#val)
                                     });
                                 } else {
-                                    let props = build_struct(tag_name, &args, object_suffix);
+                                    let props = build_struct(
+                                        tag_name,
+                                        &args,
+                                        object_suffix,
+                                        include_parent_id,
+                                    );
                                     if let Some(cx_name) = cx_name {
                                         attrs.props =
                                             Some(quote! { #cx_name, #props.#func_name(#val) });
                                     } else {
                                         attrs.props = Some(quote! { #props.#func_name(#val) });
                                     }
-                                }
-                            } else if name == "default" {
-                                let props = build_struct(tag_name, &args, object_suffix);
-                                if let Some(cx_name) = cx_name {
-                                    attrs.props = Some(quote! { #cx_name, #props });
-                                } else {
-                                    attrs.props = Some(quote! { #props });
                                 }
                             }
                         }
@@ -257,9 +256,8 @@ impl NodeAttributes {
         }
 
         if let Some(tag_name) = tag_name {
-            let should_add_props = !attribute_parsed && (args.is_some() || attrs.state.is_some());
-            if should_add_props {
-                let props = build_struct(tag_name, &args, object_suffix);
+            if !attribute_parsed {
+                let props = build_struct(tag_name, &args, object_suffix, include_parent_id);
                 if let Some(cx_name) = cx_name {
                     attrs.props = Some(quote! { #cx_name, #props.build() });
                 } else {
@@ -276,42 +274,75 @@ fn build_struct(
     tag_name: &str,
     args: &Option<proc_macro2::TokenStream>,
     object_suffix: &str,
+    include_parent_id: bool,
 ) -> proc_macro2::TokenStream {
     let object = capitalize(tag_name) + object_suffix;
     let ident = Ident::new(&object, Span::call_site());
+    let caller_id = NEXT_ID.fetch_add(1, Ordering::SeqCst).to_string();
+    let caller_id_args = if include_parent_id {
+        quote!(parent_id.clone() + #caller_id)
+    } else {
+        quote!(#caller_id.to_string())
+    };
     if let Some(args) = args.as_ref() {
         quote! {
-            #ident::new(#args)
+            #ident::new(#args).__caller_id(#caller_id_args)
         }
     } else {
         quote! {
-            #ident::builder()
+            #ident::builder().__caller_id(#caller_id_args)
         }
     }
 }
 
-pub(crate) fn parse_root_nodes(cx_name: &TokenStream, nodes: Vec<Node>) -> View {
+pub(crate) fn view(
+    tokens: proc_macro::TokenStream,
+    include_parent_id: bool,
+) -> proc_macro::TokenStream {
+    let tokens: proc_macro2::TokenStream = tokens.into();
+    let mut tokens = tokens.into_iter().peekable();
+    let cx_token = if tokens.peek().unwrap().to_string() != "<" {
+        let token = tokens.next().unwrap().to_token_stream();
+        let _comma = tokens.next().unwrap();
+        token
+    } else {
+        quote! { () }
+    };
+
+    match rstml::parse2(tokens.collect()) {
+        Ok(nodes) => {
+            let view = parse_root_nodes(&cx_token, nodes, include_parent_id);
+            quote! {
+                #view
+            }
+        }
+        Err(e) => e.to_compile_error(),
+    }
+    .into()
+}
+
+fn parse_root_nodes(cx_name: &TokenStream, nodes: Vec<Node>, include_parent_id: bool) -> View {
     if let [node] = &nodes[..] {
-        parse_root_node(cx_name, node)
+        parse_root_node(cx_name, node, include_parent_id)
     } else {
         abort_call_site!(format!("RSX should contain a single root node"));
     }
 }
 
-fn parse_root_node(cx_name: &TokenStream, node: &Node) -> View {
+fn parse_root_node(cx_name: &TokenStream, node: &Node, include_parent_id: bool) -> View {
     if let Node::Element(element) = node {
-        parse_element(cx_name, element)
+        parse_element(cx_name, element, include_parent_id)
     } else {
         abort_call_site!("RSX root node should be a named element");
     }
 }
 
-fn parse_elements(cx_name: &TokenStream, nodes: &[Node]) -> Vec<View> {
+fn parse_elements(cx_name: &TokenStream, nodes: &[Node], include_parent_id: bool) -> Vec<View> {
     let mut views = vec![];
     for node in nodes {
         match node {
             Node::Element(element) => {
-                views.push(parse_element(cx_name, element));
+                views.push(parse_element(cx_name, element, include_parent_id));
             }
             Node::Block(block) => {
                 if let Some(block) = block.try_block() {
@@ -337,14 +368,18 @@ fn parse_elements(cx_name: &TokenStream, nodes: &[Node]) -> Vec<View> {
     views
 }
 
-pub(crate) fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::TokenStream {
+pub(crate) fn parse_named_element_children(
+    nodes: &[Node],
+    include_parent_id: bool,
+) -> proc_macro2::TokenStream {
     let mut tokens = vec![];
     let mut force_vec = false;
     for node in nodes {
         match node {
             Node::Element(element) => {
-                let children = parse_named_element_children(&element.children);
-                let attrs = NodeAttributes::from_custom(None, element, children, "");
+                let children = parse_named_element_children(&element.children, include_parent_id);
+                let attrs =
+                    NodeAttributes::from_custom(None, element, children, "", include_parent_id);
 
                 if let Some(props) = attrs.props {
                     tokens.push(quote! { #props });
@@ -369,7 +404,7 @@ pub(crate) fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::Token
             //     abort_call_site!("Attribute invalid at this location");
             // }
             Node::Fragment(fragment) => {
-                let children = parse_named_element_children(&fragment.children);
+                let children = parse_named_element_children(&fragment.children, include_parent_id);
                 tokens.push(children);
                 force_vec = true;
             }
@@ -385,16 +420,17 @@ pub(crate) fn parse_named_element_children(nodes: &[Node]) -> proc_macro2::Token
     }
 }
 
-fn parse_element(cx_name: &TokenStream, element: &NodeElement) -> View {
+fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id: bool) -> View {
     match element.name().to_string().as_str() {
-        "Row" | "row" => {
-            let children = parse_elements(cx_name, &element.children);
+        "row" => {
+            let children = parse_elements(cx_name, &element.children, include_parent_id);
             let attrs = NodeAttributes::from_nodes(
                 Some(cx_name),
                 None,
                 element.attributes(),
                 None,
                 "Props",
+                include_parent_id,
             );
             View {
                 view_type: ViewType::Row(children),
@@ -402,14 +438,15 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement) -> View {
                 constraint_val: attrs.expr,
             }
         }
-        "Column" | "column" => {
-            let children = parse_elements(cx_name, &element.children);
+        "column" => {
+            let children = parse_elements(cx_name, &element.children, include_parent_id);
             let attrs = NodeAttributes::from_nodes(
                 Some(cx_name),
                 None,
                 element.attributes(),
                 None,
                 "Props",
+                include_parent_id,
             );
             View {
                 view_type: ViewType::Column(children),
@@ -418,8 +455,14 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement) -> View {
             }
         }
         name => {
-            let children = parse_named_element_children(&element.children);
-            let attrs = NodeAttributes::from_custom(Some(cx_name), element, children, "Props");
+            let children = parse_named_element_children(&element.children, include_parent_id);
+            let attrs = NodeAttributes::from_custom(
+                Some(cx_name),
+                element,
+                children,
+                "Props",
+                include_parent_id,
+            );
             View {
                 view_type: ViewType::Element {
                     name: Ident::new(name, Span::call_site()),
