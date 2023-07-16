@@ -182,7 +182,7 @@ impl ToTokens for Model {
         }
 
         body.sig.ident = format_ident!("__{}", body.sig.ident);
-        body.sig.inputs.push(syn::parse_quote!(parent_id: String));
+        body.sig.inputs.push(syn::parse_quote!(parent_id: u32));
         body.sig.output = syn::parse_quote!(-> impl LazyView<#view_type>);
         #[allow(clippy::redundant_clone)] // false positive
         let body_name = body.sig.ident.clone();
@@ -207,7 +207,7 @@ impl ToTokens for Model {
             },
             ty: Type::Path(TypePath {
                 qself: None,
-                path: syn::parse_quote!(String),
+                path: syn::parse_quote!(u32),
             }),
         });
 
@@ -285,7 +285,7 @@ impl ToTokens for Model {
         //     }
         // };
         let component = quote! {
-            ::tui_rsx::LazyViewWrapper::new(#body_name(#scope_name, #used_prop_names __caller_id.clone()))
+            ::tui_rsx::LazyViewWrapper::new(#body_name(#scope_name, #used_prop_names __caller_id))
         };
 
         let props_arg = if no_props {
@@ -326,7 +326,7 @@ impl ToTokens for Model {
 
             quote! {
                 impl #impl_generics #props_name #generics #where_clause {
-                    fn new(#prop_name: #prop_type) -> #props_builder_name <#return_generics ((#prop_type,), #(#extra_args),*)> {
+                    pub fn new(#prop_name: #prop_type) -> #props_builder_name <#return_generics ((#prop_type,), #(#extra_args),*)> {
                         Self::builder().#prop_name(#prop_name)
                     }
                 }
@@ -356,7 +356,7 @@ impl ToTokens for Model {
                         res
                     }
                 } else {
-                    let mut map = ::std::collections::HashMap::<String, ::std::rc::Rc<::std::cell::RefCell<dyn View<#view_type>>>>::new();
+                    let mut map = ::std::collections::HashMap::<u32, ::std::rc::Rc<::std::cell::RefCell<dyn View<#view_type>>>>::new();
                     let res = ::std::rc::Rc::new(::std::cell::RefCell::new(#component));
                     map.insert(__caller_id, res.clone());
                     cache_mut.insert::<::tui_rsx::KeyWrapper<#view_type>>(map);

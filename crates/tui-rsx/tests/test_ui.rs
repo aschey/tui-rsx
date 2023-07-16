@@ -80,8 +80,8 @@ fn conditional() {
         <column>
             {
                 match a {
-                    1 => mount!(<block title="test" borders=Borders::ALL/>),
-                    _ => mount!(<block title="test2" borders=Borders::ALL/>)
+                    1 => view!(<block title="test" borders=Borders::ALL/>),
+                    _ => view!(<block title="test2" borders=Borders::ALL/>)
                 }
             }
         </column>
@@ -158,12 +158,12 @@ fn prop_iteration() {
 fn stateful() {
     let backend = TestBackend::new(10, 3);
     let mut terminal = Terminal::new(backend).unwrap();
-    let mut state = ListState::default();
+    let state = ListState::default();
     let mut view = mount! {
-        <stateful_list state=&mut state>
+        <stateful_list_owned state=state>
             <listItem>"test1"</listItem>
             <listItem>"test2"</listItem>
-        </stateful_list>
+        </stateful_list_owned>
     };
 
     terminal

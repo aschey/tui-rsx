@@ -2,11 +2,11 @@ use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error::abort_call_site;
 use quote::{quote, ToTokens, TokenStreamExt};
 use rstml::node::{Node, NodeAttribute, NodeElement};
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use syn::{Block, Expr, ExprLit, Lit, LitInt};
 
-static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+static NEXT_ID: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Clone, Debug)]
 enum Constraint {
@@ -37,6 +37,7 @@ pub(crate) struct View {
     view_type: ViewType,
     constraint: Constraint,
     constraint_val: Expr,
+    create_dummy_parent: bool,
 }
 
 impl View {
@@ -143,9 +144,14 @@ impl ToTokens for View {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let fns = self.generate_fns();
         let view = self.view_to_tokens(None);
-
+        let dummy_parent = if self.create_dummy_parent {
+            quote!(let parent_id = 0;)
+        } else {
+            quote!()
+        };
         tokens.append_all(quote! {
             {
+                #dummy_parent
                 #fns
                 #view
             }
@@ -278,11 +284,11 @@ fn build_struct(
 ) -> proc_macro2::TokenStream {
     let object = capitalize(tag_name) + object_suffix;
     let ident = Ident::new(&object, Span::call_site());
-    let caller_id = NEXT_ID.fetch_add(1, Ordering::SeqCst).to_string();
+    let caller_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
     let caller_id_args = if include_parent_id {
-        quote!(parent_id.clone() + #caller_id)
+        quote!((parent_id.to_string() + &#caller_id.to_string()).parse().expect("invalid integer"))
     } else {
-        quote!(#caller_id.to_string())
+        quote!(#caller_id)
     };
     if let Some(args) = args.as_ref() {
         quote! {
@@ -311,10 +317,9 @@ pub(crate) fn view(
 
     match rstml::parse2(tokens.collect()) {
         Ok(nodes) => {
-            let view = parse_root_nodes(&cx_token, nodes, include_parent_id);
-            quote! {
-                #view
-            }
+            let mut view = parse_root_nodes(&cx_token, nodes, include_parent_id);
+            view.create_dummy_parent = !include_parent_id;
+            view.to_token_stream()
         }
         Err(e) => e.to_compile_error(),
     }
@@ -357,6 +362,7 @@ fn parse_elements(cx_name: &TokenStream, nodes: &[Node], include_parent_id: bool
                         },
                         constraint: Constraint::Min,
                         constraint_val: get_default_constraint(),
+                        create_dummy_parent: false,
                     })
                 }
             }
@@ -436,6 +442,7 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id
                 view_type: ViewType::Row(children),
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
+                create_dummy_parent: false,
             }
         }
         "column" => {
@@ -452,6 +459,7 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id
                 view_type: ViewType::Column(children),
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
+                create_dummy_parent: false,
             }
         }
         name => {
@@ -475,6 +483,7 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id
                 },
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
+                create_dummy_parent: false,
             }
         }
     }
