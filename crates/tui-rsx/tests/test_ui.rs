@@ -4,7 +4,9 @@ use ratatui::{
     style::{Color, Style},
     Terminal,
 };
+use std::marker::PhantomData;
 use tui_rsx::{prelude::*, view};
+use typed_builder::TypedBuilder;
 
 #[test]
 fn standalone_widget() {
@@ -160,10 +162,10 @@ fn stateful() {
     let mut terminal = Terminal::new(backend).unwrap();
     let state = ListState::default();
     let mut view = mount! {
-        <stateful_list_owned state=state>
+        <stateful_list state=state>
             <listItem>"test1"</listItem>
             <listItem>"test2"</listItem>
-        </stateful_list_owned>
+        </stateful_list>
     };
 
     terminal
@@ -371,6 +373,229 @@ fn simple_custom_component() {
     let mut view = mount! {
         <column>
             <Viewer text="hi"/>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec!["hi"]));
+}
+
+#[test]
+fn custom_component_children() {
+    #[component]
+    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+        cx: T,
+        #[prop(into, children)] text: String,
+    ) -> impl View<B> {
+        move || {
+            view! { cx,
+                <list>
+                    <>
+                        <listItem>{text.clone()}</listItem>
+                    </>
+                </list>
+            }
+        }
+    }
+
+    let backend = TestBackend::new(2, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut view = mount! {
+        <column>
+            <Viewer>
+                "hi"
+            </Viewer>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec!["hi"]));
+}
+
+#[test]
+fn custom_component_children_second() {
+    #[component]
+    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+        cx: T,
+        #[prop(default = 0)] _something: usize,
+        #[prop(into, children)] text: String,
+        #[prop(default = 0)] _something_else: usize,
+    ) -> impl View<B> {
+        move || {
+            view! { cx,
+                <list>
+                    <>
+                        <listItem>{text.clone()}</listItem>
+                    </>
+                </list>
+            }
+        }
+    }
+
+    let backend = TestBackend::new(2, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut view = mount! {
+        <column>
+            <Viewer>
+                "hi"
+            </Viewer>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec!["hi"]));
+}
+
+#[test]
+fn custom_child_prop() {
+    #[caller_id]
+    #[derive(TypedBuilder, ComponentChildren)]
+    struct ChildProp {
+        #[children]
+        #[builder(setter(into))]
+        text: String,
+    }
+
+    #[component]
+    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+        cx: T,
+        #[prop(into, children)] children: ChildProp,
+    ) -> impl View<B> {
+        move || {
+            view! { cx,
+                <list>
+                    <>
+                        <listItem>{children.text.clone()}</listItem>
+                    </>
+                </list>
+            }
+        }
+    }
+
+    let backend = TestBackend::new(2, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut view = mount! {
+        <column>
+            <Viewer>
+                <ChildProp>{"hi"}</ChildProp>
+            </Viewer>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec!["hi"]));
+}
+
+#[test]
+fn component_child() {
+    #[component]
+    fn viewer<T: Copy + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
+        _cx: T,
+        #[prop(children)] children: V,
+    ) -> impl View<B> {
+        move || {
+            let mut children = children.clone();
+            view! { cx,
+                <column>
+                    {children}
+                </column>
+            }
+        }
+    }
+
+    let backend = TestBackend::new(2, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut view = mount! {
+        <column>
+            <Viewer> {
+                move || view! {
+                    <list>
+                        <>
+                            <listItem>{"hi"}</listItem>
+                        </>
+                    </list>
+                }
+            }
+            </Viewer>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec!["hi"]));
+}
+
+#[test]
+fn component_child_nested() {
+    #[caller_id]
+    #[derive(TypedBuilder, ComponentChildren)]
+    struct ChildProp<B: Backend + 'static, V: LazyView<B> + Clone + 'static> {
+        #[children]
+        views: V,
+        #[builder(default)]
+        _phantom: PhantomData<B>,
+    }
+
+    #[component]
+    fn Viewer<T: Copy + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
+        _cx: T,
+        #[prop(children)] children: ChildProp<B, V>,
+    ) -> impl View<B> {
+        move || {
+            let mut children = children.views.clone();
+            view! { cx,
+                <column>
+                    {children}
+                </column>
+            }
+        }
+    }
+
+    let backend = TestBackend::new(2, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut view = mount! {
+        <column>
+            <Viewer>
+                <ChildProp> {
+                    move || view! {
+                        <list>
+                            <>
+                                <listItem>{"hi"}</listItem>
+                            </>
+                        </list>
+                    }
+                }
+                </ChildProp>
+            </Viewer>
         </column>
     };
     terminal

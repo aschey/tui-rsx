@@ -4,7 +4,7 @@ use convert_case::{
     Casing,
 };
 use proc_macro2::{Ident, Span, TokenStream};
-use proc_macro_error::{abort, abort_call_site};
+use proc_macro_error::abort;
 use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
 use syn::{
     parse::Parse, parse_quote, spanned::Spanned, AngleBracketedGenericArguments, Attribute, FnArg,
@@ -195,22 +195,6 @@ impl ToTokens for Model {
             .map(|p| p.ident.to_token_stream())
             .collect();
 
-        props.push(Prop {
-            docs: Docs::new(&[]),
-            prop_opts: Default::default(),
-            name: PatIdent {
-                attrs: vec![],
-                by_ref: None,
-                mutability: None,
-                ident: Ident::new("__caller_id", Span::call_site()),
-                subpat: None,
-            },
-            ty: Type::Path(TypePath {
-                qself: None,
-                path: syn::parse_quote!(u32),
-            }),
-        });
-
         if !body.sig.generics.params.is_empty() {
             props.push(Prop {
                 docs: Docs::new(&[]),
@@ -234,9 +218,7 @@ impl ToTokens for Model {
         let lifetimes = body.sig.generics.lifetimes();
 
         let props_name = format_ident!("{name}Props");
-        let props_builder_name = format_ident!("{name}PropsBuilder");
-        // let trace_name = format!("<{name} />");
-        // abort_call_site!(format!("{props:?}"));
+
         let prop_builder_fields = prop_builder_fields(vis, &props);
 
         let prop_names = prop_names(&props);
@@ -246,44 +228,6 @@ impl ToTokens for Model {
 
         let component_fn_prop_docs = generate_component_fn_prop_docs(&props);
 
-        // let (tracing_instrument_attr, tracing_span_expr, tracing_guard_expr) =
-        //     if cfg!(feature = "tracing") {
-        //         (
-        //             // quote! {
-        //             //     #[allow(clippy::let_with_type_underscore)]
-        //             //     #[cfg_attr(
-        //             //         any(debug_assertions, feature="ssr"),
-        //             //         ::leptos::leptos_dom::tracing::instrument(level = "info", name = #trace_name, skip_all)
-        //             //     )]
-        //             // },
-        //             // quote! {
-        //             //     let span = ::leptos::leptos_dom::tracing::Span::current();
-        //             // },
-        //             quote! {
-        //                 #[cfg(debug_assertions)]
-        //                 let _guard = span.entered();
-        //             },
-        //         )
-        //     } else {
-        //         (quote! {}, quote! {}, quote! {})
-        //     };
-
-        // let component = if *is_transparent {
-        //     quote! {
-        //         #body_name(#scope_name, #prop_names)
-        //     }
-        // } else {
-        //     quote! {
-        //         ::leptos::leptos_dom::Component::new(
-        //             stringify!(#name),
-        //             move |cx| {
-        //                 // #tracing_guard_expr
-
-        //                 #body_name(cx, #prop_names)
-        //             }
-        //         )
-        //     }
-        // };
         let component = quote! {
             ::tui_rsx::LazyViewWrapper::new(#body_name(#scope_name, #used_prop_names __caller_id))
         };
@@ -305,36 +249,6 @@ impl ToTokens for Model {
                 } = props;
             }
         };
-
-        let builder_new = if let Some(children_prop) = props.iter().find(|p| p.prop_opts.children) {
-            let mut prop_name = children_prop.name.clone();
-            prop_name.mutability = None;
-            let prop_type = children_prop.ty.clone();
-            let generics_tokens: Vec<_> = body
-                .sig
-                .generics
-                .type_params()
-                .map(|p| p.ident.to_token_stream())
-                .collect();
-            let return_generics = if generics_tokens.is_empty() {
-                quote! {}
-            } else {
-                quote! { #(#generics_tokens),*, }
-            };
-            // -1 for cx arg and -1 for current arg
-            let extra_args: Vec<TokenStream> = (0..props.len() - 2).map(|_| quote! {()}).collect();
-
-            quote! {
-                impl #impl_generics #props_name #generics #where_clause {
-                    pub fn new(#prop_name: #prop_type) -> #props_builder_name <#return_generics ((#prop_type,), #(#extra_args),*)> {
-                        Self::builder().#prop_name(#prop_name)
-                    }
-                }
-            }
-        } else {
-            quote! {}
-        };
-        // abort_call_site!(format!("{builder_new}"));
 
         let cache_name = format_ident!("{}_CACHE", body.sig.ident.to_string().to_uppercase());
         let widget_cache_decl = quote! {
@@ -364,47 +278,20 @@ impl ToTokens for Model {
                 }
             })
         };
-        // let into_view = if no_props {
-        //     quote! {
-        //         impl #impl_generics ::leptos::IntoView for #props_name #generics #where_clause {
-        //             fn into_view(self, cx: ::leptos::Scope) -> ::leptos::View {
-        //                 #name(cx).into_view(cx)
-        //             }
-        //         }
-        //     }
-        // } else {
-        //     quote! {
-        //         impl #impl_generics ::leptos::IntoView for #props_name #generics #where_clause {
-        //             fn into_view(self, cx: ::leptos::Scope) -> ::leptos::View {
-        //                 #name(cx, self).into_view(cx)
-        //             }
-        //         }
-        //     }
-        // };
 
         let output = quote! {
             #[doc = #builder_name_doc]
             #[doc = ""]
             #docs
             #component_fn_prop_docs
-            #[derive(::tui_rsx::typed_builder::TypedBuilder)]
+            #[caller_id]
+            #[derive(::tui_rsx::typed_builder::TypedBuilder,::tui_rsx::ComponentChildren)]
             #[builder(doc)]
             #vis struct #props_name #impl_generics #where_clause {
                 #prop_builder_fields
             }
 
-            // impl #impl_generics ::tui_rsx::Props for #props_name #generics #where_clause {
-            //     type Builder = #props_builder_name #generics;
-            //     fn builder() -> Self::Builder {
-            //         #props_name::builder()
-            //     }
-            // }
-
-            #builder_new
-
             #widget_cache_decl
-
-            // #into_view
 
             #docs
             #component_fn_prop_docs
@@ -421,23 +308,12 @@ impl ToTokens for Model {
 
                 #destructure_props
 
-                // #tracing_span_expr
-
                 #widget_cache_impl
             }
         };
 
         tokens.append_all(output)
     }
-}
-
-impl Model {
-    // #[allow(clippy::wrong_self_convention)]
-    // pub fn is_transparent(mut self, is_transparent: bool) -> Self {
-    //     self.is_transparent = is_transparent;
-
-    //     self
-    // }
 }
 
 #[derive(Clone, Debug)]
@@ -641,6 +517,7 @@ struct TypedBuilderOpts {
     default_with_value: Option<syn::Expr>,
     strip_option: bool,
     into: bool,
+    children: bool,
 }
 
 impl TypedBuilderOpts {
@@ -650,6 +527,7 @@ impl TypedBuilderOpts {
             default_with_value: opts.default.clone(),
             strip_option: opts.strip_option || opts.optional && is_ty_option,
             into: opts.into,
+            children: opts.children,
         }
     }
 }
@@ -683,6 +561,10 @@ impl ToTokens for TypedBuilderOpts {
             quote! {}
         };
 
+        if self.children {
+            tokens.append_all(quote! {#[children]});
+        }
+
         if default.is_empty() && setter.is_empty() {
             return;
         }
@@ -697,7 +579,6 @@ fn prop_builder_fields(vis: &Visibility, props: &[Prop]) -> TokenStream {
     props
         .iter()
         .skip(1)
-        // .filter(|Prop { ty, .. }| !is_valid_scope_type(ty))
         .map(|prop| {
             let Prop {
                 docs,
@@ -708,7 +589,6 @@ fn prop_builder_fields(vis: &Visibility, props: &[Prop]) -> TokenStream {
             let mut name = name.clone();
             name.mutability = None;
             let builder_attrs = TypedBuilderOpts::from_opts(prop_opts, is_option(ty));
-
             let builder_docs = prop_to_doc(prop, PropDocStyle::Inline);
 
             // Children won't need documentation in many cases
@@ -730,12 +610,13 @@ fn prop_builder_fields(vis: &Visibility, props: &[Prop]) -> TokenStream {
 }
 
 fn prop_names(props: &[Prop]) -> TokenStream {
-    props
+    let mut props: Vec<_> = props
         .iter()
         .skip(1)
-        // .filter(|Prop { ty, .. }| !is_valid_scope_type(ty))
         .map(|Prop { name, .. }| quote! { #name, })
-        .collect()
+        .collect();
+    props.push(quote!(__caller_id));
+    props.into_iter().collect()
 }
 
 fn prop_names_for_component(props: &[Prop]) -> TokenStream {
@@ -744,7 +625,7 @@ fn prop_names_for_component(props: &[Prop]) -> TokenStream {
         .skip(1)
         .filter(|Prop { name, .. }| {
             let name_str = name.ident.to_string();
-            name_str != "_phantom" && name_str != "__caller_id"
+            name_str != "_phantom"
         })
         .map(|Prop { name, .. }| {
             let mut name = name.clone();
@@ -920,27 +801,6 @@ fn prop_to_doc(
         }
     }
 }
-
-// fn is_valid_scope_type(ty: &Type) -> bool {
-//     [
-//         parse_quote!(Scope),
-//         parse_quote!(leptos_reactive::Scope),
-//         parse_quote!(::leptos_reactive::Scope),
-//     ]
-//     .iter()
-//     .any(|test| ty == test)
-// }
-
-// fn is_valid_into_view_return_type(ty: &ReturnType) -> bool {
-//     [
-//         parse_quote!(-> impl Fn(&mut Frame<B>, Rect)),
-//         parse_quote!(-> impl Fn(&mut Frame<CrosstermBackend<Stdout>>, Rect)),
-//         // parse_quote!(-> impl leptos::IntoView),
-//         // parse_quote!(-> impl ::leptos::IntoView),
-//     ]
-//     .iter()
-//     .any(|test| ty == test)
-// }
 
 fn value_to_string(value: &syn::Expr) -> Option<String> {
     match &value {

@@ -15,42 +15,56 @@ pub mod prelude {
 
 macro_rules! impl_widget {
     ($name:ident, $widget:ident, $props:ident) => {
-        pub type $props = $widget<'static>;
+        pub type $props<'a> = $widget<'a>;
 
-        impl MakeBuilder for $props {}
+        impl MakeBuilder for $props<'_> {}
 
-        pub fn $name<T, B: Backend + 'static>(_cx: T, props: $props) -> impl View<B> {
+        pub fn $name<T, B: Backend>(_cx: T, props: $props<'static>) -> impl View<B> {
             move |frame: &mut Frame<B>, rect: Rect| frame.render_widget(&props, rect)
         }
     };
 }
 
 macro_rules! impl_stateful_widget {
-    ($name:ident, $name_owned:ident, $widget:ident, $props:ident, $owned_props: ident, $state:ident) => {
-        pub type $props = $widget<'static>;
-
-        pub fn $name<T, B: Backend + 'static>(
-            _cx: T,
-            props: $props,
-            state: &'static mut $state,
-        ) -> impl View<B> {
-            move |frame: &mut Frame<B>, rect: Rect| {
-                frame.render_stateful_widget(&props, rect, state);
+    ($name:ident, $widget:ident, $props:ident, $state:ident) => {
+        impl<'a, B> StatefulRender<B, $props<'a>> for RefCell<$state>
+        where
+            B: Backend,
+        {
+            fn render_with_state(&mut self, widget: &$props, frame: &mut Frame<B>, rect: Rect) {
+                frame.render_stateful_widget(widget, rect, &mut self.borrow_mut())
             }
         }
 
-        pub type $owned_props = $widget<'static>;
+        impl<'a, B> StatefulRender<B, $props<'a>> for $state
+        where
+            B: Backend,
+        {
+            fn render_with_state(&mut self, widget: &$props, frame: &mut Frame<B>, rect: Rect) {
+                frame.render_stateful_widget(widget, rect, &mut self.clone())
+            }
+        }
 
-        pub fn $name_owned<T, B: Backend + 'static>(
+        pub type $props<'a> = $widget<'a>;
+
+        pub fn $name<'a, T, B: Backend>(
             _cx: T,
-            props: $props,
-            mut state: $state,
+            props: $props<'static>,
+            mut state: impl StatefulRender<B, $widget<'a>> + 'static,
         ) -> impl View<B> {
             move |frame: &mut Frame<B>, rect: Rect| {
-                frame.render_stateful_widget(&props, rect, &mut state);
+                state.render_with_state(&props, frame, rect);
             }
         }
     };
+}
+
+pub trait StatefulRender<B, W>
+where
+    B: Backend,
+    W: StatefulWidget,
+{
+    fn render_with_state(&mut self, widget: &W, frame: &mut Frame<B>, rect: Rect);
 }
 
 pub struct KeyWrapper<T>(PhantomData<T>);
@@ -107,22 +121,8 @@ impl_widget!(paragraph, Paragraph, ParagraphProps);
 impl_widget!(list, List, ListProps);
 impl_widget!(tabs, Tabs, TabsProps);
 impl_widget!(table, Table, TableProps);
-impl_stateful_widget!(
-    stateful_list,
-    stateful_list_owned,
-    List,
-    StatefulListProps,
-    StatefulListOwnedProps,
-    ListState
-);
-impl_stateful_widget!(
-    stateful_table,
-    stateful_table_owned,
-    Table,
-    StatefulTableProps,
-    StatefulTableOwnedProps,
-    TableState
-);
+impl_stateful_widget!(stateful_list, List, StatefulListProps, ListState);
+impl_stateful_widget!(stateful_table, Table, StatefulTableProps, TableState);
 
 pub trait View<B: Backend> {
     fn view(&mut self, frame: &mut Frame<B>, rect: Rect);
@@ -131,7 +131,7 @@ pub trait View<B: Backend> {
 
 impl<B, F> View<B> for F
 where
-    B: Backend + 'static,
+    B: Backend,
     F: FnMut(&mut Frame<B>, Rect) + 'static,
 {
     fn view(&mut self, frame: &mut Frame<B>, rect: Rect) {
@@ -145,7 +145,7 @@ where
 
 impl<B> View<B> for Box<dyn View<B>>
 where
-    B: Backend + 'static,
+    B: Backend,
 {
     fn view(&mut self, frame: &mut Frame<B>, rect: Rect) {
         (**self).view(frame, rect)
