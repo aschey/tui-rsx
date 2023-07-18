@@ -185,6 +185,16 @@ impl<B: Backend + 'static> View<B> for Rc<RefCell<dyn View<B>>> {
     }
 }
 
+impl<B: Backend + 'static, V: View<B> + 'static> View<B> for Rc<RefCell<V>> {
+    fn view(&mut self, frame: &mut Frame<B>, rect: Rect) {
+        self.borrow_mut().view(frame, rect)
+    }
+
+    fn into_boxed_view(self) -> Box<dyn View<B>> {
+        Box::new(self)
+    }
+}
+
 pub trait LazyView<B: Backend> {
     fn view(&mut self, frame: &mut Frame<B>, rect: Rect);
 }

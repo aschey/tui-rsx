@@ -37,6 +37,7 @@ pub(crate) struct View {
     view_type: ViewType,
     constraint: Constraint,
     constraint_val: Expr,
+    layout_props: Option<TokenStream>,
     create_dummy_parent: bool,
 }
 
@@ -58,17 +59,19 @@ impl View {
         i: Option<usize>,
     ) -> proc_macro2::TokenStream {
         let constraints: Vec<_> = children.iter().map(|c| c.get_view_constraint()).collect();
+
         let child_tokens: Vec<_> = children
             .iter()
             .enumerate()
             .map(|(i, v)| v.view_to_tokens(Some(i)))
             .collect();
-
+        let layout_props = self.layout_props.clone();
         let layout_tokens = quote! {
             move |f: &mut Frame<_>, rect: Rect| {
                 let layout = Layout::default().direction(#direction);
                 let chunks = layout
                     .constraints([#(#constraints),*])
+                    #layout_props
                     .split(rect);
                 #(#child_tokens)*
             }
@@ -187,6 +190,7 @@ impl NodeAttributes {
             include_parent_id,
         )
     }
+
     fn from_nodes(
         cx_name: Option<&TokenStream>,
         tag_name: Option<&str>,
@@ -268,6 +272,58 @@ impl NodeAttributes {
                     attrs.props = Some(quote! { #cx_name, #props.build() });
                 } else {
                     attrs.props = Some(quote! { #props.build() });
+                }
+            }
+        }
+
+        attrs
+    }
+
+    fn from_layout_nodes(nodes: &[NodeAttribute]) -> Self {
+        let mut attrs = Self {
+            constraint: Constraint::Min,
+            expr: get_default_constraint(),
+            props: None,
+            state: None,
+        };
+
+        // let mut attribute_parsed = false;
+        for node in nodes {
+            if let NodeAttribute::Attribute(attribute) = node {
+                match attribute.key.to_string().as_str() {
+                    "min" => {
+                        attrs.constraint = Constraint::Min;
+                        attrs.expr = attribute.value().unwrap().clone();
+                    }
+                    "max" => {
+                        attrs.constraint = Constraint::Max;
+                        attrs.expr = attribute.value().unwrap().clone();
+                    }
+                    "percentage" => {
+                        attrs.constraint = Constraint::Percentage;
+                        attrs.expr = attribute.value().unwrap().clone();
+                    }
+                    "length" => {
+                        attrs.constraint = Constraint::Length;
+                        attrs.expr = attribute.value().unwrap().clone();
+                    }
+                    "state" => {
+                        if let Some(val) = &attribute.value() {
+                            attrs.state = Some(val.to_token_stream());
+                        }
+                    }
+                    name => {
+                        let func_name = Ident::new(name, Span::call_site());
+                        if let Some(val) = &attribute.value() {
+                            if let Some(props) = attrs.props {
+                                attrs.props = Some(quote! {
+                                    #props.#func_name(#val)
+                                });
+                            } else {
+                                attrs.props = Some(quote! {.#func_name(#val)});
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -363,6 +419,7 @@ fn parse_elements(cx_name: &TokenStream, nodes: &[Node], include_parent_id: bool
                         constraint: Constraint::Min,
                         constraint_val: get_default_constraint(),
                         create_dummy_parent: false,
+                        layout_props: None,
                     })
                 }
             }
@@ -397,7 +454,7 @@ pub(crate) fn parse_named_element_children(
             Node::Block(block) => {
                 if let Some(block) = block.try_block() {
                     // Get content without braces
-                    let content: proc_macro2::TokenStream =
+                    let content: TokenStream =
                         block.stmts.iter().map(|s| s.to_token_stream()).collect();
 
                     tokens.push(quote! { #content });
@@ -430,36 +487,24 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id
     match element.name().to_string().as_str() {
         "row" => {
             let children = parse_elements(cx_name, &element.children, include_parent_id);
-            let attrs = NodeAttributes::from_nodes(
-                Some(cx_name),
-                None,
-                element.attributes(),
-                None,
-                "Props",
-                include_parent_id,
-            );
+            let attrs = NodeAttributes::from_layout_nodes(element.attributes());
             View {
                 view_type: ViewType::Row(children),
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
                 create_dummy_parent: false,
+                layout_props: attrs.props,
             }
         }
         "column" => {
             let children = parse_elements(cx_name, &element.children, include_parent_id);
-            let attrs = NodeAttributes::from_nodes(
-                Some(cx_name),
-                None,
-                element.attributes(),
-                None,
-                "Props",
-                include_parent_id,
-            );
+            let attrs = NodeAttributes::from_layout_nodes(element.attributes());
             View {
                 view_type: ViewType::Column(children),
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
                 create_dummy_parent: false,
+                layout_props: attrs.props,
             }
         }
         name => {
@@ -484,6 +529,7 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
                 create_dummy_parent: false,
+                layout_props: None,
             }
         }
     }
