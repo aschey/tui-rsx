@@ -25,6 +25,18 @@ macro_rules! impl_widget {
     };
 }
 
+macro_rules! impl_widget_no_lifetime {
+    ($name:ident, $widget:ident, $props:ident) => {
+        pub type $props = $widget;
+
+        impl MakeBuilder for $props {}
+
+        pub fn $name<T, B: Backend>(_cx: T, props: $props) -> impl View<B> {
+            move |frame: &mut Frame<B>, rect: Rect| frame.render_widget(&props, rect)
+        }
+    };
+}
+
 macro_rules! impl_stateful_widget {
     ($name:ident, $widget:ident, $props:ident, $state:ident) => {
         impl<'a, B> StatefulRender<B, $props<'a>> for RefCell<$state>
@@ -121,8 +133,15 @@ impl_widget!(paragraph, Paragraph, ParagraphProps);
 impl_widget!(list, List, ListProps);
 impl_widget!(tabs, Tabs, TabsProps);
 impl_widget!(table, Table, TableProps);
+impl_widget_no_lifetime!(clear, Clear, ClearProps);
 impl_stateful_widget!(stateful_list, List, StatefulListProps, ListState);
 impl_stateful_widget!(stateful_table, Table, StatefulTableProps, TableState);
+impl_stateful_widget!(
+    stateful_scrollbar,
+    Scrollbar,
+    StatefulScrollbarProps,
+    ScrollbarState
+);
 
 pub trait View<B: Backend> {
     fn view(&mut self, frame: &mut Frame<B>, rect: Rect);
