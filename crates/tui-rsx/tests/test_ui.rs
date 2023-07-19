@@ -358,6 +358,111 @@ fn macro_as_prop() {
 }
 
 #[test]
+fn simple_overlay() {
+    let backend = TestBackend::new(10, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = mount! {
+        <overlay>
+            <block borders=Borders::ALL/>
+            <paragraph>
+                "test"
+            </paragraph>
+        </overlay>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "test─────┐",
+        "│        │",
+        "└────────┘",
+    ]));
+}
+
+#[test]
+fn overlay_multiple() {
+    let backend = TestBackend::new(10, 6);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = mount! {
+        <overlay>
+            <block borders=Borders::ALL title="test"/>
+            <column margin=1>
+                <list length=2>
+                    <listItem>{"hi"}</listItem>
+                    <listItem>{"yo"}</listItem>
+                </list>
+                <list>
+                    <listItem>{"hi2"}</listItem>
+                    <listItem>{"yo2"}</listItem>
+                </list>
+            </column>
+        </overlay>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "┌test────┐",
+        "│hi      │",
+        "│yo      │",
+        "│hi2     │",
+        "│yo2     │",
+        "└────────┘",
+    ]));
+}
+
+#[test]
+fn two_overlays() {
+    let backend = TestBackend::new(10, 8);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = mount! {
+        <column>
+            <column percentage=50>
+                <overlay>
+                    <block borders=Borders::ALL title="test"/>
+                    <column margin=1>
+                        <list length=2>
+                            <listItem>{"hi"}</listItem>
+                            <listItem>{"yo"}</listItem>
+                        </list>
+                    </column>
+                </overlay>
+            </column>
+            <column percentage=50>
+                <overlay>
+                    <block borders=Borders::ALL title="test2"/>
+                    <column margin=1>
+                        <list length=2>
+                            <listItem>{"hi2"}</listItem>
+                            <listItem>{"yo2"}</listItem>
+                        </list>
+                    </column>
+                </overlay>
+            </column>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "┌test────┐",
+        "│hi      │",
+        "│yo      │",
+        "└────────┘",
+        "┌test2───┐",
+        "│hi2     │",
+        "│yo2     │",
+        "└────────┘",
+    ]));
+}
+
+#[test]
 fn array_as_variable() {
     let backend = TestBackend::new(15, 1);
     let mut terminal = Terminal::new(backend).unwrap();

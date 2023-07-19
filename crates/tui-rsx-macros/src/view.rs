@@ -21,6 +21,7 @@ enum Constraint {
 enum ViewType {
     Row(Vec<View>),
     Column(Vec<View>),
+    Overlay(Vec<View>),
     Element {
         name: Ident,
         fn_name: Ident,
@@ -45,11 +46,33 @@ pub(crate) struct View {
 impl View {
     fn get_view_constraint(&self) -> TokenStream {
         let constraint_val = &self.constraint_val;
+
         match self.constraint {
             Constraint::Min => quote! { Constraint::Min(#constraint_val) },
-            Constraint::Max => quote! { Constraint::Min(#constraint_val) },
+            Constraint::Max => quote! { Constraint::Max(#constraint_val) },
             Constraint::Percentage => quote! { Constraint::Percentage(#constraint_val) },
             Constraint::Length => quote! { Constraint::Length(#constraint_val) },
+        }
+    }
+
+    fn get_overlay_tokens(&self, children: &[View], is_child: bool) -> TokenStream {
+        let fn_clones = self.generate_fn_clones();
+        let child_tokens: Vec<_> = children
+            .iter()
+            .enumerate()
+            .map(|(i, v)| v.view_to_tokens(Some(i), true))
+            .collect();
+        let layout_tokens = quote! {
+            move |f: &mut Frame<_>, rect: Rect| {
+                #fn_clones
+                #(#child_tokens)*
+            }
+        };
+
+        if is_child {
+            quote!((#layout_tokens).view(f, rect);)
+        } else {
+            layout_tokens
         }
     }
 
@@ -57,17 +80,19 @@ impl View {
         &self,
         direction: TokenStream,
         children: &[View],
-        i: Option<usize>,
+        child_index: Option<usize>,
+        parent_is_overlay: bool,
     ) -> TokenStream {
         let constraints: Vec<_> = children.iter().map(|c| c.get_view_constraint()).collect();
 
         let child_tokens: Vec<_> = children
             .iter()
             .enumerate()
-            .map(|(i, v)| v.view_to_tokens(Some(i)))
+            .map(|(i, v)| v.view_to_tokens(Some(i), false))
             .collect();
         let layout_props = self.layout_props.clone();
         let fn_clones = self.generate_fn_clones();
+
         let layout_tokens = quote! {
             move |f: &mut Frame<_>, rect: Rect| {
                 #fn_clones
@@ -80,8 +105,12 @@ impl View {
             }
         };
 
-        if let Some(i) = i {
-            quote!((#layout_tokens).view(f, chunks[#i]);)
+        if let Some(child_index) = child_index {
+            if parent_is_overlay {
+                quote!((#layout_tokens).view(f, rect);)
+            } else {
+                quote!((#layout_tokens).view(f, chunks[#child_index]);)
+            }
         } else {
             layout_tokens
         }
@@ -89,7 +118,7 @@ impl View {
 
     fn generate_fn_clones(&self) -> TokenStream {
         match &self.view_type {
-            ViewType::Row(children) | ViewType::Column(children) => {
+            ViewType::Row(children) | ViewType::Column(children) | ViewType::Overlay(children) => {
                 let child_fns: Vec<_> = children.iter().map(|c| c.generate_fn_clones()).collect();
                 quote! { #(#child_fns)* }
             }
@@ -108,7 +137,7 @@ impl View {
 
     fn generate_fns(&self) -> TokenStream {
         match &self.view_type {
-            ViewType::Row(children) | ViewType::Column(children) => {
+            ViewType::Row(children) | ViewType::Column(children) | ViewType::Overlay(children) => {
                 let child_fns: Vec<_> = children.iter().map(|c| c.generate_fns()).collect();
                 quote! { #(#child_fns)* }
             }
@@ -137,26 +166,30 @@ impl View {
         }
     }
 
-    fn view_to_tokens(&self, i: Option<usize>) -> TokenStream {
+    fn view_to_tokens(&self, child_index: Option<usize>, parent_is_overlay: bool) -> TokenStream {
         match &self.view_type {
-            ViewType::Row(children) => {
-                self.get_layout_tokens(quote! {Direction::Horizontal}, children, i)
-            }
-            ViewType::Column(children) => {
-                self.get_layout_tokens(quote! {Direction::Vertical}, children, i)
-            }
-            ViewType::Block { fn_name, .. } => {
-                if let Some(i) = i {
-                    quote! { (#fn_name).view(f, chunks[#i]); }
+            ViewType::Row(children) => self.get_layout_tokens(
+                quote! {Direction::Horizontal},
+                children,
+                child_index,
+                parent_is_overlay,
+            ),
+            ViewType::Column(children) => self.get_layout_tokens(
+                quote! {Direction::Vertical},
+                children,
+                child_index,
+                parent_is_overlay,
+            ),
+            ViewType::Overlay(children) => self.get_overlay_tokens(children, child_index.is_some()),
+            ViewType::Block { fn_name, .. } | ViewType::Element { fn_name, .. } => {
+                if let Some(child_index) = child_index {
+                    if parent_is_overlay {
+                        quote! { (#fn_name).view(f, rect); }
+                    } else {
+                        quote! { (#fn_name).view(f, chunks[#child_index]); }
+                    }
                 } else {
                     quote! { (#fn_name) }
-                }
-            }
-            ViewType::Element { fn_name, .. } => {
-                if let Some(i) = i {
-                    quote! { #fn_name.view(f, chunks[#i]); }
-                } else {
-                    quote! { #fn_name }
                 }
             }
         }
@@ -166,7 +199,7 @@ impl View {
 impl ToTokens for View {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let fns = self.generate_fns();
-        let view = self.view_to_tokens(None);
+        let view = self.view_to_tokens(None, false);
         let dummy_parent = if self.create_dummy_parent {
             quote!(let parent_id = 0;)
         } else {
@@ -508,8 +541,9 @@ pub(crate) fn parse_named_element_children(nodes: &[Node], include_parent_id: bo
 fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id: bool) -> View {
     match element.name().to_string().as_str() {
         "row" => {
-            let children = parse_elements(cx_name, &element.children, include_parent_id);
             let attrs = NodeAttributes::from_layout_nodes(element.attributes());
+            let children = parse_elements(cx_name, &element.children, include_parent_id);
+
             View {
                 view_type: ViewType::Row(children),
                 constraint: attrs.constraint,
@@ -519,10 +553,23 @@ fn parse_element(cx_name: &TokenStream, element: &NodeElement, include_parent_id
             }
         }
         "column" => {
-            let children = parse_elements(cx_name, &element.children, include_parent_id);
             let attrs = NodeAttributes::from_layout_nodes(element.attributes());
+            let children = parse_elements(cx_name, &element.children, include_parent_id);
+
             View {
                 view_type: ViewType::Column(children),
+                constraint: attrs.constraint,
+                constraint_val: attrs.expr,
+                create_dummy_parent: false,
+                layout_props: attrs.props,
+            }
+        }
+        "overlay" => {
+            let attrs = NodeAttributes::from_layout_nodes(element.attributes());
+            let children = parse_elements(cx_name, &element.children, include_parent_id);
+
+            View {
+                view_type: ViewType::Overlay(children),
                 constraint: attrs.constraint,
                 constraint_val: attrs.expr,
                 create_dummy_parent: false,
