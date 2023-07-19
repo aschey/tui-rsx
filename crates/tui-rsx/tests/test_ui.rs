@@ -62,13 +62,43 @@ fn simple_column() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
 
     terminal.backend().assert_buffer(&Buffer::with_lines(vec![
         "┌test────┐",
         "│        │",
+        "└────────┘",
+    ]));
+}
+
+#[test]
+fn nested_layout() {
+    let backend = TestBackend::new(10, 6);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = mount! {
+        <column>
+            <row length=4>
+                <block title="test1" borders=Borders::ALL/>
+            </row>
+            <row length=2>
+                <block title="test2" borders=Borders::ALL/>
+            </row>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+
+    terminal.backend().assert_buffer(&Buffer::with_lines(vec![
+        "┌test1───┐",
+        "│        │",
+        "│        │",
+        "└────────┘",
+        "┌test2───┐",
         "└────────┘",
     ]));
 }
@@ -90,7 +120,7 @@ fn conditional() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
 
@@ -115,7 +145,7 @@ fn list_basic() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
 
@@ -142,7 +172,7 @@ fn prop_iteration() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
 
@@ -195,7 +225,7 @@ fn list_styled() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
 
@@ -227,7 +257,7 @@ fn block_children() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
     terminal
@@ -274,7 +304,7 @@ fn single_nested_child_as_vec() {
 
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
     terminal
@@ -296,7 +326,7 @@ fn complex_block_children() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
     terminal
@@ -317,7 +347,7 @@ fn macro_as_prop() {
     };
     terminal
         .draw(|f| {
-            view(f, f.size());
+            view.view(f, f.size());
         })
         .unwrap();
     terminal.backend().assert_buffer(&Buffer::with_lines(vec![
@@ -352,7 +382,7 @@ fn array_as_variable() {
 #[test]
 fn simple_custom_component() {
     #[component]
-    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+    fn viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(into)] text: String,
     ) -> impl View<B> {
@@ -388,7 +418,7 @@ fn simple_custom_component() {
 #[test]
 fn custom_component_children() {
     #[component]
-    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+    fn viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(into, children)] text: String,
     ) -> impl View<B> {
@@ -426,7 +456,7 @@ fn custom_component_children() {
 #[test]
 fn custom_component_children_second() {
     #[component]
-    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+    fn viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(default = 0)] _something: usize,
         #[prop(into, children)] text: String,
@@ -474,7 +504,7 @@ fn custom_child_prop() {
     }
 
     #[component]
-    fn viewer<T: Copy + 'static, B: Backend + 'static>(
+    fn viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(into, children)] children: ChildProp,
     ) -> impl View<B> {
@@ -512,7 +542,7 @@ fn custom_child_prop() {
 #[test]
 fn component_child() {
     #[component]
-    fn viewer<T: Copy + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
+    fn viewer<T: Clone + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
         _cx: T,
         #[prop(children)] children: V,
     ) -> impl View<B> {
@@ -565,7 +595,7 @@ fn component_child_nested() {
     }
 
     #[component]
-    fn Viewer<T: Copy + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
+    fn Viewer<T: Clone + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
         _cx: T,
         #[prop(children)] children: ChildProp<B, V>,
     ) -> impl View<B> {
@@ -596,6 +626,63 @@ fn component_child_nested() {
                 }
                 </ChildProp>
             </Viewer>
+        </column>
+    };
+    terminal
+        .draw(|f| {
+            view.view(f, f.size());
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .assert_buffer(&Buffer::with_lines(vec!["hi"]));
+}
+
+#[test]
+fn custom_component_nested_layout() {
+    #[caller_id]
+    #[derive(TypedBuilder, ComponentChildren)]
+    struct ChildProp<B: Backend + 'static, V: LazyView<B> + Clone + 'static> {
+        #[children]
+        views: V,
+        #[builder(default)]
+        _phantom: PhantomData<B>,
+    }
+
+    #[component]
+    fn Viewer<T: Clone + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
+        _cx: T,
+        #[prop(children)] children: ChildProp<B, V>,
+    ) -> impl View<B> {
+        move || {
+            let mut children = children.views.clone();
+            view! { cx,
+                <column>
+                    {children}
+                </column>
+            }
+        }
+    }
+
+    let backend = TestBackend::new(2, 1);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut view = mount! {
+        <column>
+            <row length=1>
+                <Viewer>
+                    <ChildProp> {
+                        move || view! {
+                            <list>
+                                <>
+                                    <listItem>{"hi"}</listItem>
+                                </>
+                            </list>
+                        }
+                    }
+                    </ChildProp>
+                </Viewer>
+            </row>
         </column>
     };
     terminal

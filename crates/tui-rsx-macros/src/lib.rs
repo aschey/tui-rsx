@@ -21,13 +21,13 @@ pub fn prop(tokens: TokenStream) -> TokenStream {
 #[proc_macro]
 #[proc_macro_error]
 pub fn view(tokens: TokenStream) -> TokenStream {
-    view::view(tokens, true)
+    view::view(tokens.into(), true).into()
 }
 
 #[proc_macro]
 #[proc_macro_error]
 pub fn mount(tokens: TokenStream) -> TokenStream {
-    view::view(tokens, false)
+    view::view(tokens.into(), false).into()
 }
 
 #[proc_macro_attribute]

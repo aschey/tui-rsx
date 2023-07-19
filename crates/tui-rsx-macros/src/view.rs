@@ -1,6 +1,7 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error::abort_call_site;
 use quote::{quote, ToTokens, TokenStreamExt};
+use rstml::node::KeyedAttribute;
 use rstml::node::{Node, NodeAttribute, NodeElement};
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
@@ -23,12 +24,12 @@ enum ViewType {
     Element {
         name: Ident,
         fn_name: Ident,
-        props: Option<proc_macro2::TokenStream>,
-        state: Option<proc_macro2::TokenStream>,
+        props: Option<TokenStream>,
+        state: Option<TokenStream>,
     },
     Block {
         fn_name: Ident,
-        tokens: proc_macro2::TokenStream,
+        tokens: TokenStream,
     },
 }
 
@@ -42,7 +43,7 @@ pub(crate) struct View {
 }
 
 impl View {
-    fn get_view_constraint(&self) -> proc_macro2::TokenStream {
+    fn get_view_constraint(&self) -> TokenStream {
         let constraint_val = &self.constraint_val;
         match self.constraint {
             Constraint::Min => quote! { Constraint::Min(#constraint_val) },
@@ -54,10 +55,10 @@ impl View {
 
     fn get_layout_tokens(
         &self,
-        direction: proc_macro2::TokenStream,
+        direction: TokenStream,
         children: &[View],
         i: Option<usize>,
-    ) -> proc_macro2::TokenStream {
+    ) -> TokenStream {
         let constraints: Vec<_> = children.iter().map(|c| c.get_view_constraint()).collect();
 
         let child_tokens: Vec<_> = children
@@ -66,8 +67,10 @@ impl View {
             .map(|(i, v)| v.view_to_tokens(Some(i)))
             .collect();
         let layout_props = self.layout_props.clone();
+        let fn_clones = self.generate_fn_clones();
         let layout_tokens = quote! {
             move |f: &mut Frame<_>, rect: Rect| {
+                #fn_clones
                 let layout = Layout::default().direction(#direction);
                 let chunks = layout
                     .constraints([#(#constraints),*])
@@ -84,14 +87,36 @@ impl View {
         }
     }
 
-    fn generate_fns(&self) -> proc_macro2::TokenStream {
+    fn generate_fn_clones(&self) -> TokenStream {
+        match &self.view_type {
+            ViewType::Row(children) | ViewType::Column(children) => {
+                let child_fns: Vec<_> = children.iter().map(|c| c.generate_fn_clones()).collect();
+                quote! { #(#child_fns)* }
+            }
+            ViewType::Block { fn_name, .. } => {
+                quote! {
+                    let mut #fn_name = #fn_name.clone();
+                }
+            }
+            ViewType::Element { fn_name, .. } => {
+                quote! {
+                    let mut #fn_name = #fn_name.clone();
+                }
+            }
+        }
+    }
+
+    fn generate_fns(&self) -> TokenStream {
         match &self.view_type {
             ViewType::Row(children) | ViewType::Column(children) => {
                 let child_fns: Vec<_> = children.iter().map(|c| c.generate_fns()).collect();
                 quote! { #(#child_fns)* }
             }
             ViewType::Block { fn_name, tokens } => {
-                quote! { let mut #fn_name = move |f: &mut Frame<_>, chunks: Rect| #tokens.view(f, chunks); }
+                quote! {
+                    let mut #fn_name = ::std::rc::Rc::new(::std::cell::RefCell::new(
+                        move |f: &mut Frame<_>, chunks: Rect| #tokens.view(f, chunks)));
+                }
             }
             ViewType::Element {
                 name,
@@ -100,19 +125,19 @@ impl View {
                 state,
             } => match (props, state) {
                 (Some(props), Some(state)) => {
-                    quote! { let mut #fn_name = #name(#props, #state); }
+                    quote! { let mut #fn_name = ::std::rc::Rc::new(::std::cell::RefCell::new(#name(#props, #state))); }
                 }
                 (Some(props), None) => {
-                    quote! { let mut #fn_name = #name(#props); }
+                    quote! { let mut #fn_name = ::std::rc::Rc::new(::std::cell::RefCell::new(#name(#props))); }
                 }
                 (_, _) => {
-                    quote! { let mut #fn_name = #name(); }
+                    quote! { let mut #fn_name = ::std::rc::Rc::new(::std::cell::RefCell::new(#name())); }
                 }
             },
         }
     }
 
-    fn view_to_tokens(&self, i: Option<usize>) -> proc_macro2::TokenStream {
+    fn view_to_tokens(&self, i: Option<usize>) -> TokenStream {
         match &self.view_type {
             ViewType::Row(children) => {
                 self.get_layout_tokens(quote! {Direction::Horizontal}, children, i)
@@ -127,12 +152,7 @@ impl View {
                     quote! { (#fn_name) }
                 }
             }
-            ViewType::Element {
-                fn_name,
-                props: _,
-                state: _,
-                ..
-            } => {
+            ViewType::Element { fn_name, .. } => {
                 if let Some(i) = i {
                     quote! { #fn_name.view(f, chunks[#i]); }
                 } else {
@@ -144,7 +164,7 @@ impl View {
 }
 
 impl ToTokens for View {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let fns = self.generate_fns();
         let view = self.view_to_tokens(None);
         let dummy_parent = if self.create_dummy_parent {
@@ -165,15 +185,16 @@ impl ToTokens for View {
 struct NodeAttributes {
     constraint: Constraint,
     expr: Expr,
-    props: Option<proc_macro2::TokenStream>,
-    state: Option<proc_macro2::TokenStream>,
+    props: Option<TokenStream>,
+    state: Option<TokenStream>,
+    key: Option<Expr>,
 }
 
 impl NodeAttributes {
     fn from_custom(
         cx_name: Option<&TokenStream>,
         element: &NodeElement,
-        children: proc_macro2::TokenStream,
+        children: TokenStream,
         object_suffix: &str,
         include_parent_id: bool,
     ) -> Self {
@@ -191,11 +212,47 @@ impl NodeAttributes {
         )
     }
 
+    fn parse_standard_attrs(&mut self, attribute: &KeyedAttribute) -> bool {
+        match attribute.key.to_string().as_str() {
+            "min" => {
+                self.constraint = Constraint::Min;
+                self.expr = attribute.value().unwrap().clone();
+                true
+            }
+            "max" => {
+                self.constraint = Constraint::Max;
+                self.expr = attribute.value().unwrap().clone();
+                true
+            }
+            "percentage" => {
+                self.constraint = Constraint::Percentage;
+                self.expr = attribute.value().unwrap().clone();
+                true
+            }
+            "length" => {
+                self.constraint = Constraint::Length;
+                self.expr = attribute.value().unwrap().clone();
+                true
+            }
+            "state" => {
+                if let Some(val) = &attribute.value() {
+                    self.state = Some(val.to_token_stream());
+                }
+                true
+            }
+            "key" => {
+                self.key = Some(attribute.value().unwrap().clone());
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn from_nodes(
         cx_name: Option<&TokenStream>,
         tag_name: Option<&str>,
         nodes: &[NodeAttribute],
-        args: Option<proc_macro2::TokenStream>,
+        args: Option<TokenStream>,
         object_suffix: &str,
         include_parent_id: bool,
     ) -> Self {
@@ -204,57 +261,42 @@ impl NodeAttributes {
             expr: get_default_constraint(),
             props: None,
             state: None,
+            key: None,
         };
 
-        let mut attribute_parsed = false;
-        for node in nodes {
-            if let NodeAttribute::Attribute(attribute) = node {
-                match attribute.key.to_string().as_str() {
-                    "min" => {
-                        attrs.constraint = Constraint::Min;
-                        attrs.expr = attribute.value().unwrap().clone();
+        let custom_attrs: Vec<_> = nodes
+            .iter()
+            .filter_map(|node| {
+                if let NodeAttribute::Attribute(attribute) = node {
+                    if !attrs.parse_standard_attrs(attribute) {
+                        return Some(attribute);
                     }
-                    "max" => {
-                        attrs.constraint = Constraint::Max;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "percentage" => {
-                        attrs.constraint = Constraint::Percentage;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "length" => {
-                        attrs.constraint = Constraint::Length;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "state" => {
-                        if let Some(val) = &attribute.value() {
-                            attrs.state = Some(val.to_token_stream());
-                        }
-                    }
-                    name => {
-                        attribute_parsed = true;
-                        let func_name = Ident::new(name, Span::call_site());
-                        if let Some(tag_name) = tag_name {
-                            if let Some(val) = &attribute.value() {
-                                if let Some(props) = attrs.props {
-                                    attrs.props = Some(quote! {
-                                        #props.#func_name(#val)
-                                    });
-                                } else {
-                                    let props = build_struct(
-                                        tag_name,
-                                        &args,
-                                        object_suffix,
-                                        include_parent_id,
-                                    );
-                                    if let Some(cx_name) = cx_name {
-                                        attrs.props =
-                                            Some(quote! { #cx_name, #props.#func_name(#val) });
-                                    } else {
-                                        attrs.props = Some(quote! { #props.#func_name(#val) });
-                                    }
-                                }
-                            }
+                }
+                None
+            })
+            .collect();
+
+        for attribute in &custom_attrs {
+            let func_name = Ident::new(&attribute.key.to_string(), Span::call_site());
+            if let Some(tag_name) = tag_name {
+                if let Some(val) = &attribute.value() {
+                    if let Some(props) = attrs.props {
+                        attrs.props = Some(quote! {
+                            #props.#func_name(#val)
+                        });
+                    } else {
+                        let props = build_struct(
+                            tag_name,
+                            &args,
+                            object_suffix,
+                            include_parent_id,
+                            attrs.key.clone(),
+                        );
+                        if let Some(cx_name) = cx_name {
+                            attrs.props =
+                                Some(quote! { #cx_name.clone(), #props.#func_name(#val) });
+                        } else {
+                            attrs.props = Some(quote! { #props.#func_name(#val) });
                         }
                     }
                 }
@@ -266,10 +308,16 @@ impl NodeAttributes {
         }
 
         if let Some(tag_name) = tag_name {
-            if !attribute_parsed {
-                let props = build_struct(tag_name, &args, object_suffix, include_parent_id);
+            if custom_attrs.is_empty() {
+                let props = build_struct(
+                    tag_name,
+                    &args,
+                    object_suffix,
+                    include_parent_id,
+                    attrs.key.clone(),
+                );
                 if let Some(cx_name) = cx_name {
-                    attrs.props = Some(quote! { #cx_name, #props.build() });
+                    attrs.props = Some(quote! { #cx_name.clone(), #props.build() });
                 } else {
                     attrs.props = Some(quote! { #props.build() });
                 }
@@ -285,43 +333,21 @@ impl NodeAttributes {
             expr: get_default_constraint(),
             props: None,
             state: None,
+            key: None,
         };
 
         // let mut attribute_parsed = false;
         for node in nodes {
             if let NodeAttribute::Attribute(attribute) = node {
-                match attribute.key.to_string().as_str() {
-                    "min" => {
-                        attrs.constraint = Constraint::Min;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "max" => {
-                        attrs.constraint = Constraint::Max;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "percentage" => {
-                        attrs.constraint = Constraint::Percentage;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "length" => {
-                        attrs.constraint = Constraint::Length;
-                        attrs.expr = attribute.value().unwrap().clone();
-                    }
-                    "state" => {
-                        if let Some(val) = &attribute.value() {
-                            attrs.state = Some(val.to_token_stream());
-                        }
-                    }
-                    name => {
-                        let func_name = Ident::new(name, Span::call_site());
-                        if let Some(val) = &attribute.value() {
-                            if let Some(props) = attrs.props {
-                                attrs.props = Some(quote! {
-                                    #props.#func_name(#val)
-                                });
-                            } else {
-                                attrs.props = Some(quote! {.#func_name(#val)});
-                            }
+                if !attrs.parse_standard_attrs(attribute) {
+                    let func_name = Ident::new(&attribute.key.to_string(), Span::call_site());
+                    if let Some(val) = &attribute.value() {
+                        if let Some(props) = attrs.props {
+                            attrs.props = Some(quote! {
+                                #props.#func_name(#val)
+                            });
+                        } else {
+                            attrs.props = Some(quote! {.#func_name(#val)});
                         }
                     }
                 }
@@ -334,15 +360,19 @@ impl NodeAttributes {
 
 fn build_struct(
     tag_name: &str,
-    args: &Option<proc_macro2::TokenStream>,
+    args: &Option<TokenStream>,
     object_suffix: &str,
     include_parent_id: bool,
-) -> proc_macro2::TokenStream {
+    key: Option<Expr>,
+) -> TokenStream {
     let object = capitalize(tag_name) + object_suffix;
     let ident = Ident::new(&object, Span::call_site());
     let caller_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    let key_clause = key.map(|k| quote!(+ &#k.to_string()));
     let caller_id_args = if include_parent_id {
-        quote!((parent_id.to_string() + &#caller_id.to_string()).parse().expect("invalid integer"))
+        quote!((parent_id.to_string() + &#caller_id.to_string() #key_clause).parse().expect("invalid integer"))
+    } else if key_clause.is_some() {
+        quote!((#caller_id.to_string() #key_clause).parse().expect("invalid integer"))
     } else {
         quote!(#caller_id)
     };
@@ -357,11 +387,7 @@ fn build_struct(
     }
 }
 
-pub(crate) fn view(
-    tokens: proc_macro::TokenStream,
-    include_parent_id: bool,
-) -> proc_macro::TokenStream {
-    let tokens: proc_macro2::TokenStream = tokens.into();
+pub(crate) fn view(tokens: TokenStream, include_parent_id: bool) -> TokenStream {
     let mut tokens = tokens.into_iter().peekable();
     let cx_token = if tokens.peek().unwrap().to_string() != "<" {
         let token = tokens.next().unwrap().to_token_stream();
@@ -379,7 +405,6 @@ pub(crate) fn view(
         }
         Err(e) => e.to_compile_error(),
     }
-    .into()
 }
 
 fn parse_root_nodes(cx_name: &TokenStream, nodes: Vec<Node>, include_parent_id: bool) -> View {
@@ -431,10 +456,7 @@ fn parse_elements(cx_name: &TokenStream, nodes: &[Node], include_parent_id: bool
     views
 }
 
-pub(crate) fn parse_named_element_children(
-    nodes: &[Node],
-    include_parent_id: bool,
-) -> proc_macro2::TokenStream {
+pub(crate) fn parse_named_element_children(nodes: &[Node], include_parent_id: bool) -> TokenStream {
     let mut tokens = vec![];
     let mut force_vec = false;
     for node in nodes {
@@ -475,7 +497,7 @@ pub(crate) fn parse_named_element_children(
         }
     }
     if tokens.is_empty() {
-        proc_macro2::TokenStream::default()
+        TokenStream::default()
     } else if tokens.len() == 1 && !force_vec {
         tokens[0].clone()
     } else {
@@ -543,7 +565,7 @@ fn snake_case_to_pascal_case(s: &str) -> String {
     s.split('_').map(capitalize).collect::<Vec<_>>().join("")
 }
 
-fn get_block_contents(block: &Block) -> proc_macro2::TokenStream {
+fn get_block_contents(block: &Block) -> TokenStream {
     block.stmts.iter().map(|s| s.to_token_stream()).collect()
 }
 
