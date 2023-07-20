@@ -487,7 +487,7 @@ fn array_as_variable() {
 #[test]
 fn simple_custom_component() {
     #[component]
-    fn viewer<T: Clone + 'static, B: Backend + 'static>(
+    fn Viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(into)] text: String,
     ) -> impl View<B> {
@@ -523,7 +523,7 @@ fn simple_custom_component() {
 #[test]
 fn custom_component_children() {
     #[component]
-    fn viewer<T: Clone + 'static, B: Backend + 'static>(
+    fn Viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(into, children)] text: String,
     ) -> impl View<B> {
@@ -561,7 +561,7 @@ fn custom_component_children() {
 #[test]
 fn custom_component_children_second() {
     #[component]
-    fn viewer<T: Clone + 'static, B: Backend + 'static>(
+    fn Viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(default = 0)] _something: usize,
         #[prop(into, children)] text: String,
@@ -609,7 +609,7 @@ fn custom_child_prop() {
     }
 
     #[component]
-    fn viewer<T: Clone + 'static, B: Backend + 'static>(
+    fn Viewer<T: Clone + 'static, B: Backend + 'static>(
         cx: T,
         #[prop(into, children)] children: ChildProp,
     ) -> impl View<B> {
@@ -647,7 +647,7 @@ fn custom_child_prop() {
 #[test]
 fn component_child() {
     #[component]
-    fn viewer<T: Clone + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
+    fn Viewer<T: Clone + 'static, B: Backend + 'static, V: LazyView<B> + Clone + 'static>(
         _cx: T,
         #[prop(children)] children: V,
     ) -> impl View<B> {

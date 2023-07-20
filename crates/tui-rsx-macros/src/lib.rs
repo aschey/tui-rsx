@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use proc_macro_error::proc_macro_error;
 use quote::ToTokens;
 use syn::{parse_macro_input, DeriveInput};
@@ -50,4 +51,16 @@ pub fn caller_id(_attr: TokenStream, tokens: TokenStream) -> TokenStream {
 pub fn component_children(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveInput);
     component_children::parse(input).into()
+}
+
+fn get_import() -> proc_macro2::TokenStream {
+    let found_crate = crate_name("tui-rsx").expect("tui-rsx not found");
+
+    match found_crate {
+        FoundCrate::Itself => quote::quote!(crate),
+        FoundCrate::Name(name) => {
+            let ident = proc_macro2::Ident::new(&name, proc_macro2::Span::call_site());
+            quote::quote!(#ident)
+        }
+    }
 }

@@ -12,6 +12,7 @@ pub mod prelude {
     pub use super::*;
     pub use ratatui::{layout::*, style::*, text::*, widgets::*, Frame};
 }
+pub mod components;
 
 macro_rules! impl_widget {
     ($name:ident, $widget:ident, $props:ident) => {
@@ -127,6 +128,7 @@ impl<'a> MakeBuilder for Text<'a> {}
 impl MakeBuilder for Style {}
 impl MakeBuilder for ListState {}
 impl MakeBuilder for TableState {}
+impl MakeBuilder for Wrap {}
 
 impl_widget!(block, Block, BlockProps);
 impl_widget!(paragraph, Paragraph, ParagraphProps);
@@ -298,5 +300,40 @@ where
 {
     fn into_boxed(self: F) -> Box<dyn Fn() -> R> {
         Box::new(self)
+    }
+}
+
+pub trait WrapExt {
+    fn default() -> Self;
+    fn builder() -> Self;
+    fn trim(self, trim: bool) -> Self;
+}
+
+impl WrapExt for Wrap {
+    fn default() -> Self {
+        Self { trim: false }
+    }
+
+    fn builder() -> Self {
+        Self::default()
+    }
+
+    fn trim(self, trim: bool) -> Self {
+        Self { trim }
+    }
+}
+
+pub trait ClearExt {
+    fn default() -> Self;
+    fn builder() -> Self;
+}
+
+impl ClearExt for Clear {
+    fn default() -> Self {
+        Self
+    }
+
+    fn builder() -> Self {
+        Self
     }
 }

@@ -201,7 +201,7 @@ impl ToTokens for View {
         let fns = self.generate_fns();
         let view = self.view_to_tokens(None, false);
         let dummy_parent = if self.create_dummy_parent {
-            quote!(let parent_id = 0;)
+            quote!(let __parent_id = 0;)
         } else {
             quote!()
         };
@@ -312,25 +312,28 @@ impl NodeAttributes {
         for attribute in &custom_attrs {
             let func_name = Ident::new(&attribute.key.to_string(), Span::call_site());
             if let Some(tag_name) = tag_name {
-                if let Some(val) = &attribute.value() {
-                    if let Some(props) = attrs.props {
-                        attrs.props = Some(quote! {
-                            #props.#func_name(#val)
-                        });
+                let val = if let Some(val) = &attribute.value() {
+                    quote!(#val)
+                } else {
+                    quote!()
+                };
+
+                if let Some(props) = attrs.props {
+                    attrs.props = Some(quote! {
+                        #props.#func_name(#val)
+                    });
+                } else {
+                    let props = build_struct(
+                        tag_name,
+                        &args,
+                        object_suffix,
+                        include_parent_id,
+                        attrs.key.clone(),
+                    );
+                    if let Some(cx_name) = cx_name {
+                        attrs.props = Some(quote! { #cx_name.clone(), #props.#func_name(#val) });
                     } else {
-                        let props = build_struct(
-                            tag_name,
-                            &args,
-                            object_suffix,
-                            include_parent_id,
-                            attrs.key.clone(),
-                        );
-                        if let Some(cx_name) = cx_name {
-                            attrs.props =
-                                Some(quote! { #cx_name.clone(), #props.#func_name(#val) });
-                        } else {
-                            attrs.props = Some(quote! { #props.#func_name(#val) });
-                        }
+                        attrs.props = Some(quote! { #props.#func_name(#val) });
                     }
                 }
             }
@@ -403,7 +406,7 @@ fn build_struct(
     let caller_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
     let key_clause = key.map(|k| quote!(+ &#k.to_string()));
     let caller_id_args = if include_parent_id {
-        quote!((parent_id.to_string() + &#caller_id.to_string() #key_clause).parse().expect("invalid integer"))
+        quote!((__parent_id.to_string() + &#caller_id.to_string() #key_clause).parse().expect("invalid integer"))
     } else if key_clause.is_some() {
         quote!((#caller_id.to_string() #key_clause).parse().expect("invalid integer"))
     } else {

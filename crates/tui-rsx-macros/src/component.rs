@@ -1,3 +1,4 @@
+use crate::get_import;
 use attribute_derive::Attribute as AttributeDerive;
 use convert_case::{
     Case::{Pascal, Snake},
@@ -11,6 +12,7 @@ use syn::{
     GenericArgument, Item, ItemFn, LitStr, Meta, Pat, PatIdent, Path, PathArguments, ReturnType,
     Stmt, Type, TypeParamBound, TypePath, Visibility,
 };
+
 pub struct Model {
     is_transparent: bool,
     docs: Docs,
@@ -182,7 +184,7 @@ impl ToTokens for Model {
         }
 
         body.sig.ident = format_ident!("__{}", body.sig.ident);
-        body.sig.inputs.push(syn::parse_quote!(parent_id: u32));
+        body.sig.inputs.push(syn::parse_quote!(__parent_id: u32));
         body.sig.output = syn::parse_quote!(-> impl LazyView<#view_type>);
         #[allow(clippy::redundant_clone)] // false positive
         let body_name = body.sig.ident.clone();
@@ -228,8 +230,9 @@ impl ToTokens for Model {
 
         let component_fn_prop_docs = generate_component_fn_prop_docs(&props);
 
+        let crate_import = get_import();
         let component = quote! {
-            ::tui_rsx::LazyViewWrapper::new(#body_name(#scope_name, #used_prop_names __caller_id))
+            #crate_import::LazyViewWrapper::new(#body_name(#scope_name, #used_prop_names __caller_id))
         };
 
         let props_arg = if no_props {
@@ -253,15 +256,15 @@ impl ToTokens for Model {
         let cache_name = format_ident!("{}_CACHE", body.sig.ident.to_string().to_uppercase());
         let widget_cache_decl = quote! {
             thread_local! {
-                static #cache_name: ::std::cell::RefCell<::tui_rsx::once_cell::sync::Lazy<::tui_rsx::typemap::TypeMap>> =
-                    ::std::cell::RefCell::new(::tui_rsx::once_cell::sync::Lazy::new(::tui_rsx::typemap::TypeMap::new));
+                static #cache_name: ::std::cell::RefCell<#crate_import::once_cell::sync::Lazy<#crate_import::typemap::TypeMap>> =
+                    ::std::cell::RefCell::new(#crate_import::once_cell::sync::Lazy::new(#crate_import::typemap::TypeMap::new));
             }
         };
 
         let widget_cache_impl = quote! {
             #cache_name.with(|c| {
                 let mut cache_mut = c.borrow_mut();
-                if let Some(map) = cache_mut.get_mut::<::tui_rsx::KeyWrapper<#view_type>>() {
+                if let Some(map) = cache_mut.get_mut::<#crate_import::KeyWrapper<#view_type>>() {
                     if let Some(cache) = map.get(&__caller_id) {
                         cache.clone()
                     } else {
@@ -273,7 +276,7 @@ impl ToTokens for Model {
                     let mut map = ::std::collections::HashMap::<u32, ::std::rc::Rc<::std::cell::RefCell<dyn View<#view_type>>>>::new();
                     let res = ::std::rc::Rc::new(::std::cell::RefCell::new(#component));
                     map.insert(__caller_id, res.clone());
-                    cache_mut.insert::<::tui_rsx::KeyWrapper<#view_type>>(map);
+                    cache_mut.insert::<#crate_import::KeyWrapper<#view_type>>(map);
                     res
                 }
             })
@@ -285,7 +288,7 @@ impl ToTokens for Model {
             #docs
             #component_fn_prop_docs
             #[caller_id]
-            #[derive(::tui_rsx::typed_builder::TypedBuilder,::tui_rsx::ComponentChildren)]
+            #[derive(#crate_import::typed_builder::TypedBuilder, #crate_import::ComponentChildren)]
             #[builder(doc)]
             #vis struct #props_name #impl_generics #where_clause {
                 #prop_builder_fields
